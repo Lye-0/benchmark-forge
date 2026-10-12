@@ -7,6 +7,7 @@
 - GPU, external accounts and paid APIs are optional. Fail closed if isolation is not verified.
 - AI answer diagnostics use only a fresh Codex Cloud sub-agent given public problem text,
   with no inherited history or reference answers; keep reports outside production results.
+- For newly spawned sub-agents, use gpt-6-astra with medium reasoning as requested by the user.
 - Preserve credentials, model weights and local results outside Git. Do not choose a code license.
 - Use existing isolated checkouts; do not create worktrees unless the user requests one.
 - Run backend tests/lint/types and web tests/types/build before reporting completion.

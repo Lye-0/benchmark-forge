@@ -1,0 +1,89 @@
+{
+  "kind": "development-subagent-diagnostic",
+  "official_benchmark": false,
+  "created_date": "2026-10-12",
+  "method": "fresh Codex Cloud subagent, fork_turns=none, public prompts only; instructed to use no tools",
+  "workspace_isolation": "not enforced by platform; shared workspace access was not used; this is not a security boundary",
+  "answers": [
+    {
+      "problem_id": "p-37619786accf3fcb9403c1c9",
+      "generator_id": "math.expression",
+      "difficulty": 23.7,
+      "seed": 391,
+      "prompt": "課題: math.expression\n各ペアの2数の積を求め、その総和を整数で答えてください。\n入力(JSON):\n{\"pairs\":[[4,-17],[18,13],[-12,15],[-18,-17]]}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。",
+      "answer": "292",
+      "grade": {
+        "correct": true,
+        "reason": "許容誤差内",
+        "parsed": 292.0
+      }
+    },
+    {
+      "problem_id": "p-59315507ef713faa4aa8b5c7",
+      "generator_id": "logic.boolean",
+      "difficulty": 63.2,
+      "seed": 172,
+      "prompt": "課題: logic.boolean\ncount 個の真偽値をJSON配列で答えてください。先頭は first、隣接する値の排他的論理和は xor と一致します。\n入力(JSON):\n{\"count\":7,\"first\":false,\"xor\":[false,false,false,true,true,true]}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。",
+      "answer": "[false,false,false,false,true,false,true]",
+      "grade": {
+        "correct": true,
+        "reason": "構造化回答が一致",
+        "parsed": [
+          false,
+          false,
+          false,
+          false,
+          true,
+          false,
+          true
+        ]
+      }
+    },
+    {
+      "problem_id": "p-3f3f61b46df05008e77b2d82",
+      "generator_id": "data.join",
+      "difficulty": 78.8,
+      "seed": 221,
+      "prompt": "課題: data.join\nproducts と orders を id で結合し、商品ごとの price*quantity の売上合計をJSONで答えてください。全商品を含め、注文がない商品は0です。\n入力(JSON):\n{\"orders\":[{\"id\":\"sku-1\",\"quantity\":6},{\"id\":\"sku-4\",\"quantity\":8},{\"id\":\"sku-5\",\"quantity\":10},{\"id\":\"sku-0\",\"quantity\":1},{\"id\":\"sku-2\",\"quantity\":2},{\"id\":\"sku-2\",\"quantity\":3},{\"id\":\"sku-3\",\"quantity\":8},{\"id\":\"sku-5\",\"quantity\":4},{\"id\":\"sku-0\",\"quantity\":6},{\"id\":\"sku-0\",\"quantity\":5},{\"id\":\"sku-4\",\"quantity\":1},{\"id\":\"sku-4\",\"quantity\":3},{\"id\":\"sku-5\",\"quantity\":9},{\"id\":\"sku-5\",\"quantity\":7},{\"id\":\"sku-0\",\"quantity\":7},{\"id\":\"sku-5\",\"quantity\":5},{\"id\":\"sku-4\",\"quantity\":7},{\"id\":\"sku-0\",\"quantity\":5},{\"id\":\"sku-0\",\"quantity\":5},{\"id\":\"sku-1\",\"quantity\":4}],\"products\":[{\"id\":\"sku-0\",\"price\":16},{\"id\":\"sku-1\",\"price\":28},{\"id\":\"sku-2\",\"price\":6},{\"id\":\"sku-3\",\"price\":32},{\"id\":\"sku-4\",\"price\":18},{\"id\":\"sku-5\",\"price\":36}]}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。",
+      "answer": "{\"sku-0\":464,\"sku-1\":280,\"sku-2\":30,\"sku-3\":256,\"sku-4\":342,\"sku-5\":1260}",
+      "grade": {
+        "correct": true,
+        "reason": "構造化回答が一致",
+        "parsed": {
+          "sku-0": 464,
+          "sku-1": 280,
+          "sku-2": 30,
+          "sku-3": 256,
+          "sku-4": 342,
+          "sku-5": 1260
+        }
+      }
+    },
+    {
+      "problem_id": "p-9f42632d709fca5512985a78",
+      "generator_id": "code.trace",
+      "difficulty": 44.4,
+      "seed": 93,
+      "prompt": "課題: code.trace\n次のPythonコードが出力する整数を答えてください（実行は不要）。\n total = 0\n for v in values:\n     total += v * 2 if v % modulus == 0 else v - 1\n print(total)\n入力(JSON):\n{\"modulus\":2,\"values\":[11,16,26,2,-13,-15,2,-11,-9,5]}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。",
+      "answer": "54",
+      "grade": {
+        "correct": true,
+        "reason": "許容誤差内",
+        "parsed": 54.0
+      }
+    },
+    {
+      "problem_id": "p-b17b67b681bc45950680821a",
+      "generator_id": "temporal.offset",
+      "difficulty": 87.2,
+      "seed": 43,
+      "prompt": "課題: temporal.offset\nUTCの start_utc に offsets_minutes の全オフセットを順に加算し、最終日時を YYYY-MM-DD HH:MM で答えてください。\n入力(JSON):\n{\"offsets_minutes\":[-2513,4206,5295,-4842,378,-1140,3804,4243,5791,-5623],\"start_utc\":\"2024-01-15 00:52\"}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。",
+      "answer": "2024-01-21 16:51",
+      "grade": {
+        "correct": true,
+        "reason": "完全一致",
+        "parsed": "2024-01-21 16:51"
+      }
+    }
+  ]
+}
