@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "benchmark-forge"
+version = "0.1.0"
+description = "Reproducible, local-first LLM benchmark laboratory"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "pydantic>=2.10,<3",
+  "httpx>=0.28,<1", "typer>=0.15,<1", "psutil>=6,<8",
+]
+
+[project.optional-dependencies]
+transformers = ["transformers>=4.51,<6", "torch>=2.6,<3", "accelerate>=1.5,<2"]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11,<1", "mypy>=1.15,<2", "types-psutil>=6"]
+
+[project.scripts]
+forge = "llm_benchmark.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llm_benchmark"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
