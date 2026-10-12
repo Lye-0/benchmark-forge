@@ -19,7 +19,7 @@
 - 今回のpytest: **155 passed / 2 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
 - 新規検証: UTF-8分割NDJSON、可視chunkの時刻、終端欠落・過大応答・中止時のclose、モデル申告情報、GPU情報の欠落/異常、別スレッドでの逐次出力、出力中の更新に対するスナップショット整合、gzip既存ファイル保護。HTTP/機器応答はfixtureであり実モデル・GPU検証ではありません。
 - Ruff lint / format、mypy: PASS。
-- Vitest: **6 passed**。TypeScript / Vite: PASS。
+- Vitest: **8 passed**。TypeScript / Vite: PASS。
 - Playwright / system Chromium: **4 passed**。100問2モデルのfreeze・中断再開・比較、390px画面、私有holdout取込、複数ターン評価、専用速度表示。
 - 全24生成器を5難易度×8seedで再生成し、独立したルールソルバーと採点を照合。固定480件を参照照合。整数/浮動小数の等しい難易度でIDが同じになるよう正規化。
 - 1000件の動的セットと1000件の評価結果/試行の一意性。別Pythonプロセスを`os._exit`で異常終了させ、確定済み結果を保持して未終了試行をinterruptedに復元。
@@ -61,3 +61,9 @@ Cloud内のLinux/CPU・Mock・Docker検証を実施しました。次は[Windows
 ### Windows CIの文字コード修正
 
 ユーザー提供のWindows runnerログでは、任意依存のインストール後、Torch診断の`print(r)`が日本語をcp1252へ変換できず失敗しました。CIを既存の`python -m llm_benchmark.torch_probe`へ変更し、ASCIIエスケープ付きJSONで出力します。診断失敗時の終了コード1は維持します。cp1252の標準出力を使った回帰試験を追加しました。修正後のWindows CI結果は未確認です。
+
+### 完了表示の巻き戻り修正
+
+Windows E2Eで完了表示を待つ2件がタイムアウトしたとの報告を受け、HTTP詳細取得とSSE進捗の到着順競合を調査しました。初回取得または再開後の古いHTTP応答が完了イベントより遅れて届くと、画面を実行中/待機中へ戻す不具合を2件の回帰試験で再現しました。修正前は両試験が失敗し、修正後は保存済みrevisionより古い応答を無視して完了表示を維持します。詳細タブの取得にも同じ規則を適用しています。
+
+Cloud/LinuxでPython155件（Docker2件skip）、Web8件、E2E4件、型検査・ビルドが成功しました。E2Eは失敗時にDB側の状態・処理数・revisionをJSON添付し、未終了ランを中止して後続テストへの混入を防ぎます。待機時間は延長していません。報告されたWindows実行のDB状態やtraceは未取得であり、その失敗原因がこの競合だけだったとはまだ断定できません。修正後のWindows CI結果は未確認です。

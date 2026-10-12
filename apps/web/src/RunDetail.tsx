@@ -4,6 +4,13 @@ import { Download, Pause, Play, RotateCcw, Square } from 'lucide-react';
 import { api, pct, seconds, statusName } from './api';
 import type { Registry, Run } from './types';
 
+// HTTP snapshots can arrive after newer SSE events, including the final event.
+function mergeSnapshot(current: Run | null, next: Run): Run {
+  if (current?.id !== next.id) return next;
+  if (current.revision > next.revision) return current;
+  return { ...current, ...next };
+}
+
 export function RunDetail({ id, registry, onError, refresh }: { id: string; registry: Registry; onError: (text: string) => void; refresh: () => Promise<void> }) {
   const [run, setRun] = useState<Run | null>(null);
   const [tab, setTab] = useState('overview');
@@ -14,12 +21,12 @@ export function RunDetail({ id, registry, onError, refresh }: { id: string; regi
   useEffect(() => {
     let active = true;
     const source = new EventSource(`/api/runs/${id}/events`);
-    const fetchDetail = () => api<Run>(`/runs/${id}`).then(value => { if (active) setRun(value); }).catch(e => { if (active) onError((e as Error).message); });
+    const fetchDetail = () => api<Run>(`/runs/${id}`).then(value => { if (active) setRun(old => mergeSnapshot(old, value)); }).catch(e => { if (active) onError((e as Error).message); });
     void fetchDetail();
     source.addEventListener('progress', e => {
       const value = JSON.parse((e as MessageEvent).data) as Run;
       if (!active) return;
-      setConnection('接続済み'); setRun(old => ({ ...old, ...value }));
+      setConnection('接続済み'); setRun(old => mergeSnapshot(old, value));
       if (['completed', 'cancelled'].includes(value.status)) { source.close(); void fetchDetail(); void refresh(); }
     });
     source.onerror = () => { if (active) setConnection('再接続中 · 保存済み進捗を復元します'); };
@@ -27,12 +34,12 @@ export function RunDetail({ id, registry, onError, refresh }: { id: string; regi
   }, [id, onError, refresh, streamEpoch]);
   const control = async (action: string) => {
     setBusy(true);
-    try { await api(`/runs/${id}/${action}`, {}); setRun(await api<Run>(`/runs/${id}`)); if (action === 'retry') setStreamEpoch(old => old + 1); await refresh(); }
+    try { await api(`/runs/${id}/${action}`, {}); const value = await api<Run>(`/runs/${id}`); setRun(old => mergeSnapshot(old, value)); if (action === 'retry') setStreamEpoch(old => old + 1); await refresh(); }
     catch (e) { onError((e as Error).message); }
     finally { setBusy(false); }
   };
   useEffect(() => {
-    if (tab === 'details') void api<Run>(`/runs/${id}`).then(setRun).catch(e => onError((e as Error).message));
+    if (tab === 'details') void api<Run>(`/runs/${id}`).then(value => setRun(old => mergeSnapshot(old, value))).catch(e => onError((e as Error).message));
   }, [tab, id, onError]);
   if (!run) return <div className="empty">実行結果を読み込み中…</div>;
   const active = ['queued', 'running', 'pausing'].includes(run.status);

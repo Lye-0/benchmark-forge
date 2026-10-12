@@ -1,5 +1,26 @@
 import { expect, test } from '@playwright/test';
 
+// Capture durable state separately from the DOM, and prevent a failed test's queued
+// runs from delaying unrelated tests. This server/DB is exclusive to this suite.
+test.afterEach(async ({ request }, testInfo) => {
+  const response = await request.get('/api/runs');
+  expect(response.ok()).toBeTruthy();
+  const runs = await response.json() as { id: string; status: string; completed: number; total: number; revision: number }[];
+  if (testInfo.status !== testInfo.expectedStatus) {
+    await testInfo.attach('durable-run-progress', { contentType: 'application/json', body: Buffer.from(JSON.stringify(runs.map(({ id, status, completed, total, revision }) => ({ id, status, completed, total, revision })), null, 2)) });
+  }
+  for (const run of runs) {
+    if (['queued', 'running', 'pausing', 'paused'].includes(run.status)) {
+      const cancelled = await request.post(`/api/runs/${run.id}/cancel`, { data: {} });
+      // It may complete between reading the snapshot and cancelling it.
+      if (!cancelled.ok()) {
+        const latest = await request.get(`/api/runs/${run.id}`);
+        expect(['completed', 'cancelled']).toContain((await latest.json()).status);
+      }
+    }
+  }
+});
+
 test('browser configuration → frozen set → run → logs → comparison', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'ベンチマークを、確かな比較へ。' })).toBeVisible();
