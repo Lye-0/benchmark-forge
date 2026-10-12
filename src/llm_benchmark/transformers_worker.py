@@ -3,12 +3,12 @@
 import contextlib
 import importlib
 import json
-import resource
 import sys
 import time
 from pathlib import Path
 
 from llm_benchmark.domain import ModelConfig, PublicProblem, Response
+from llm_benchmark.platform_support import peak_ram
 
 
 def infer(config: ModelConfig, problem: PublicProblem) -> Response:
@@ -63,18 +63,19 @@ def infer(config: ModelConfig, problem: PublicProblem) -> Response:
     text = tokenizer.decode(tokens, skip_special_tokens=True)
     if len(text) > 200_000:
         raise ValueError("Output too large")
+    ram_bytes, ram_scope = peak_ram()
     return Response(
         text=text,
         output_tokens=len(tokens),
         metrics={
             "load_seconds": load_seconds,
             "generation_seconds": generation_seconds,
-            "peak_ram_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
+            "peak_ram_bytes": ram_bytes,
             "peak_vram_allocated_bytes": torch.cuda.max_memory_allocated()
             if config.device == "cuda"
             else None,
             "vram_unavailable_reason": None if config.device == "cuda" else "CPU execution",
-            "ram_scope": "worker lifetime high-water RSS (Linux)",
+            "ram_scope": ram_scope,
             "vram_scope": "worker PyTorch allocator; not total GPU memory",
             "device": config.device,
             "gpu": torch.cuda.get_device_name() if config.device == "cuda" else None,

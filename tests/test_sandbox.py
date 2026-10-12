@@ -122,3 +122,29 @@ async def test_cancel_waits_for_inflight_creation_before_removal(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await task
     assert order == ["created", "removed"]
+
+
+@pytest.mark.parametrize(
+    "mode,state",
+    [
+        ("stopped", "daemon_unavailable"),
+        ("windows", "unsupported_engine"),
+        ("limits", "verification_failed"),
+    ],
+)
+async def test_engine_diagnostics_fail_closed(monkeypatch, mode, state):
+    async def fixture(*args, **kwargs):
+        if args[0] == "info":
+            return (
+                (1, b"")
+                if mode == "stopped"
+                else (0, b"windows" if mode == "windows" else b"linux")
+            )
+        return 1, b""
+
+    monkeypatch.setattr("llm_benchmark.sandbox.command", fixture)
+    sandbox = DockerSandbox()
+    result = await sandbox.verify()
+    assert result["state"] == state and not result["available"]
+    with pytest.raises(IsolationUnavailable):
+        await sandbox.execute("print('never on host')")

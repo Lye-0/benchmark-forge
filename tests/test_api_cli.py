@@ -135,10 +135,10 @@ def test_cli_generate_run_export_and_no_overwrite(tmp_path, monkeypatch):
     assert report["correct"] == 4
     output = tmp_path / "report.md"
     assert runner.invoke(cli, ["report", report["id"], "--output", str(output)]).exit_code == 0
-    previous = output.read_text()
+    previous = output.read_text(encoding="utf-8")
     assert "100.0%" in previous
     assert runner.invoke(cli, ["report", report["id"], "--output", str(output)]).exit_code == 1
-    assert output.read_text() == previous
+    assert output.read_text(encoding="utf-8") == previous
 
 
 def test_csv_formula_sanitization():

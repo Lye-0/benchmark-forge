@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import platform
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -16,6 +17,7 @@ from pydantic import Field
 from llm_benchmark.adapters import AdapterError, OllamaAdapter, capabilities, validate_endpoint
 from llm_benchmark.code_eval import CodeConfig, build_code_set
 from llm_benchmark.domain import ModelConfig, SetConfig, StartRun, StrictModel
+from llm_benchmark.environment import hardware_inventory, torch_status
 from llm_benchmark.generators import REGISTRY, registry_tree
 from llm_benchmark.reports import export_report, stream_jsonl
 from llm_benchmark.runner import Scheduler, comparison, summarize
@@ -136,17 +138,23 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     @app.get("/api/settings")
     def settings():
         return {
+            "host": {"os": platform.system(), **hardware_inventory()},
             "sandbox": {
                 **sandbox_status(),
                 "available": scheduler.sandbox.verified,
                 "code_execution": scheduler.sandbox.verified,
                 "reason": scheduler.sandbox.reason,
+                "state": scheduler.sandbox.state,
             },
             "data_directory": str(store.path.parent),
             "profile": "Preview v1",
             "code_license": "未決定",
             "paid_api_required": False,
         }
+
+    @app.post("/api/environment/torch")
+    def check_torch():
+        return torch_status()
 
     @app.get("/api/presets")
     def get_presets():

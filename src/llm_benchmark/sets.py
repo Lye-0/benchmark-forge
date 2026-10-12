@@ -13,7 +13,11 @@ class SetUnavailable(ValueError):
 
 def fixed_catalogue() -> list[Problem]:
     resource = files("llm_benchmark").joinpath("fixed_catalogue.jsonl")
-    return [Problem.model_validate_json(line) for line in resource.read_text().splitlines() if line]
+    return [
+        Problem.model_validate_json(line)
+        for line in resource.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
 
 
 def build_set(config: SetConfig) -> FrozenSet:

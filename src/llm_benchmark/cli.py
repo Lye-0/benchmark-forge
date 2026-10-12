@@ -50,7 +50,7 @@ def generate(
         )
         store().save_set(frozen)
         if output:
-            with output.open("x") as file:
+            with output.open("x", encoding="utf-8") as file:
                 file.write(frozen.model_dump_json(indent=2))
         typer.echo(
             json.dumps(
@@ -106,7 +106,9 @@ def report(
             import gzip
 
             with (
-                gzip.open(output, "xt", encoding="utf-8") if compress else output.open("x") as file
+                gzip.open(output, "xt", encoding="utf-8")
+                if compress
+                else output.open("x", encoding="utf-8") as file
             ):
                 file.write(content)
         else:
@@ -221,7 +223,7 @@ def calibration(run_id: str, output: Path):
 
     try:
         rows = calibration_rows(summarize(store(), run_id))
-        with output.open("x") as file:
+        with output.open("x", encoding="utf-8") as file:
             for row in rows:
                 file.write(json.dumps(row, ensure_ascii=False) + "\n")
     except (ValueError, KeyError, OSError) as exc:
@@ -282,6 +284,19 @@ def holdout_import(path: Path):
             "取り込みに失敗しました。JSONL形式・サイズ・読取権限を確認してください", err=True
         )
         raise typer.Exit(1) from None
+
+
+@app.command("doctor")
+def doctor(torch: bool = False):
+    """OS/機器構成を診断。--torch時のみPyTorch/CUDAを明示検査。"""
+    import platform
+
+    from llm_benchmark.environment import backend_versions, hardware_inventory, torch_status
+
+    report = {"os": platform.system(), **hardware_inventory(), "packages": backend_versions()}
+    if torch:
+        report["torch"] = torch_status()
+    typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 import asyncio
-import os
 import sys
 from unittest.mock import MagicMock
 
+import psutil
 import pytest
 
 from llm_benchmark.adapters import AdapterError, capabilities, make_adapter
@@ -88,8 +88,7 @@ async def test_worker_termination_and_sanitized_failures(worker_command, mode):
         await pending
     assert "secret-fixture" not in str(error.value)
     assert processes[0].returncode is not None
-    with pytest.raises(ProcessLookupError):
-        os.kill(processes[0].pid, 0)
+    assert not psutil.pid_exists(processes[0].pid)
 
 
 def test_inference_contract_without_real_model(tmp_path, monkeypatch):

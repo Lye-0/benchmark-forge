@@ -1,4 +1,4 @@
-name: CPU development checks
+name: Windows and Linux checks
 on:
   push:
   pull_request:
@@ -6,8 +6,12 @@ permissions:
   contents: read
 jobs:
   verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -19,9 +23,26 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - run: bash scripts/setup.sh
-      - run: bash scripts/check.sh
+      - if: runner.os == 'Linux'
+        run: bash scripts/setup.sh
+      - if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/setup.ps1
+      - if: runner.os == 'Linux'
+        run: bash scripts/check.sh
+      - if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/check.ps1
+      - name: Check Windows CPU PyTorch runtime (no model inference)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          uv sync --locked --extra transformers
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run --no-sync python -c "from llm_benchmark.torch_probe import probe; r = probe(); assert r['available']; print(r)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify disposable Docker isolation
+        if: runner.os == 'Linux'
         run: |
           docker pull python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
           FORGE_TEST_DOCKER=1 uv run pytest -q tests/test_sandbox.py
@@ -32,6 +53,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: browser-failure-traces
+          name: browser-failure-traces-${{ matrix.os }}
           path: apps/web/test-results
           retention-days: 3

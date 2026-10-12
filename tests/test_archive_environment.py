@@ -58,7 +58,7 @@ def test_archive_http_and_exclusive_gzip(store, frozen, monkeypatch, tmp_path):
     original = path.read_bytes()
     assert runner.invoke(app, ["archive", id, str(path), "--compress"]).exit_code == 1
     assert path.read_bytes() == original
-    with gzip.open(path, "rt") as file:
+    with gzip.open(path, "rt", encoding="utf-8") as file:
         assert json.loads(file.readline())["id"] == id
 
 

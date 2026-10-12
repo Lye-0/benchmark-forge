@@ -1,14 +1,14 @@
 import asyncio
-import fcntl
 import time
 from collections import Counter
 from contextlib import suppress
-from typing import Literal, TextIO
+from typing import BinaryIO, Literal
 
 from llm_benchmark.adapters import AdapterError, capabilities, make_adapter
 from llm_benchmark.analysis import difficulty_estimate, resource_summary
 from llm_benchmark.domain import ModelConfig, Result
 from llm_benchmark.grading import grade
+from llm_benchmark.platform_support import acquire_lock, release_lock
 from llm_benchmark.storage import Store
 
 
@@ -168,21 +168,20 @@ class Scheduler:
         self.store = store
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.task: asyncio.Task | None = None
-        self.lock: TextIO | None = None
+        self.lock: BinaryIO | None = None
         self.active: tuple[str, asyncio.Task] | None = None
         from llm_benchmark.sandbox import DockerSandbox
 
         self.sandbox = DockerSandbox()
 
     def start(self):
-        self.lock = (self.store.path.parent / "runner.lock").open("a")
+        if self.lock is not None:
+            raise RuntimeError("評価プロセスは既に起動しています")
         try:
-            fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            self.lock.close()
-            self.lock = None
+            self.lock = acquire_lock(self.store.path.parent / "runner.lock")
+        except OSError as exc:
             raise RuntimeError(
-                "同じデータ領域で別の評価プロセスが動いています。APIとCLIを同時に実行しないでください"
+                "データ領域をロックできません。別の評価プロセス（API/CLI）実行または保存先の権限を確認してください"
             ) from exc
         self.store.recover()
         self.task = asyncio.create_task(self.worker())
@@ -194,8 +193,7 @@ class Scheduler:
                 await self.task
         self.store.recover()
         if self.lock:
-            fcntl.flock(self.lock, fcntl.LOCK_UN)
-            self.lock.close()
+            release_lock(self.lock)
             self.lock = None
 
     def create(self, set_id: str, models: list[str]) -> list[str]:

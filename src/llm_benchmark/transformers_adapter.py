@@ -3,18 +3,16 @@
 import asyncio
 import importlib.util
 import json
-import os
-import signal
 import sys
-from contextlib import suppress
 from pathlib import Path
 
 from llm_benchmark.domain import ModelConfig, PublicProblem, Response
+from llm_benchmark.platform_support import terminate_worker, worker_environment
 
 
 def readiness(config: ModelConfig) -> str | None:
-    if sys.platform != "linux":
-        return "TransformersワーカーはLinux / WSL2のみ対応しています"
+    if sys.platform not in {"linux", "win32"}:
+        return "TransformersワーカーはWindows / Linux / WSL2に対応しています"
     if config.quantization not in {"N/A", "none"}:
         return "Transformersの量子化指定は未対応です。N/Aまたはnoneを指定してください"
     if not Path(config.model).is_dir():
@@ -32,24 +30,33 @@ class TransformersAdapter:
         from llm_benchmark.adapters import AdapterError
 
         # No inherited credentials, proxy, Python injection variables or automatic downloads.
-        env = {
-            "PATH": os.defpath,
-            "HF_HUB_OFFLINE": "1",
-            "TRANSFORMERS_OFFLINE": "1",
-            "HF_HUB_DISABLE_TELEMETRY": "1",
-            "TOKENIZERS_PARALLELISM": "false",
-        }
-        proc = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-m",
-            "llm_benchmark.transformers_worker",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-            env=env,
-            start_new_session=True,
-        )
+        env = worker_environment()
+        proc = None
+        job = None
         try:
+            creation = asyncio.create_task(
+                asyncio.create_subprocess_exec(
+                    sys.executable,
+                    "-m",
+                    "llm_benchmark.transformers_worker",
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=env,
+                    start_new_session=sys.platform != "win32",
+                )
+            )
+            try:
+                proc = await asyncio.shield(creation)
+            except asyncio.CancelledError:
+                # A process can appear after cancellation of its creation await.
+                # Settle creation and reap it before propagating the cancellation.
+                proc = await creation
+                raise
+            if sys.platform == "win32":
+                from llm_benchmark.windows_job import WindowsJob
+
+                job = WindowsJob(proc.pid)
             assert proc.stdin is not None and proc.stdout is not None
             payload = json.dumps(
                 {"config": self.config.model_dump(), "problem": problem.model_dump()}
@@ -74,7 +81,6 @@ class TransformersAdapter:
                 "Transformers推論失敗。依存・モデル形式・コンテキスト長・デバイスを確認してください"
             ) from exc
         finally:
-            # Also remove descendants if the process leader already exited.
-            with suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
-            await proc.wait()
+            if proc is not None:
+                terminate_worker(proc, job)
+                await proc.wait()

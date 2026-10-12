@@ -32,3 +32,7 @@ Codexは公式イベントのprotocol-only Mock検証まで。実認証・ツー
 ## 公開と保存
 
 SQLite・.env・認証ファイル・モデル重みはGit対象外。SQLはパラメーター化し、Reactは回答をテキスト表示、CSVは数式先頭を無害化します。secret_scan.pyは既知形式の検出であり全個人情報・秘密の除去保証ではありません。コードライセンスは未決定です。
+
+## Windowsホスト
+
+Windowsでも生成コードをホストで実行しません。Docker DesktopのLinuxコンテナで同じ実検証を行い、未導入・接続不可・Windowsコンテナ・検証失敗時はコード評価のみ無効にします。通常評価はDockerへ依存しません。TransformersはJob Objectを入力送信前に割り当て、割り当て失敗時は終了します。CPU/GPUワーカーは信頼済みローカル推論用で、コード隔離の代替ではありません。Windowsのデータ保護は保存先ACLに従い、POSIX modeをACL設定として扱いません。PowerShellスクリプトは実行ポリシー・証明書・全体のツール設定を変更しません。

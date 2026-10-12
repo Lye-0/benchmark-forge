@@ -1,6 +1,6 @@
 # 開発ロードマップ
 
-一次仕様はIMPLEMENTATION_BRIEF.md。ユーザー指示により、フェーズの境界では確認を求めず、独立して実行できる実装・検証を続けます。ユーザーの判断や操作が必要になった場合は依存しない作業を完了してから停止します。
+一次仕様はIMPLEMENTATION_BRIEF.mdと追加のWINDOWS_IMPLEMENTATION_BRIEF.md。ユーザー指示により、フェーズの境界では確認を求めず、独立して実行できる実装・検証を続けます。ユーザーの判断や操作が必要になった場合は依存しない作業を完了してから停止します。
 
 ## 実装済みの縦方向の経路
 
@@ -14,8 +14,8 @@
 
 ## 次の確認が必要な領域
 
-1. ユーザーのWSL2で実モデルを用意し、ローカル推論とCUDA/ドライバー/メモリを確認。Cloudで実モデル回答を代用しない。
-2. WSLのDocker環境でsandbox-checkを通す。rootless推奨。検証が通らない場合は無効のまま、環境差を調査する。
+1. ユーザーのWindowsネイティブ環境（Linux/WSL2も継続対応）で実モデルを用意し、ローカル推論とCUDA/ドライバー/メモリを確認。Cloudで実モデル回答を代用しない。
+2. Windows Docker DesktopのLinuxコンテナ、またはLinux/WSL2のDocker環境でsandbox-checkを通す。Linuxではrootless推奨。検証が通らない場合は無効のまま、環境差を調査する。
 3. Codex liveは公式preview参加・認証・ツール禁止・正解/秘密の読取隔離が成立した後に検証。Pythonコード隔離と混同しない。
 
 ## 長期の研究・拡張
@@ -27,3 +27,5 @@
 - コードライセンスはユーザーが選択するまで設定しない。
 
 Ollamaの可視テキストchunkによる初回受信計測、CPU/GPU構成の任意取得、全問題/結果/試行のスナップショット逐次アーカイブを追加済み。実機性能の検証とは区別します。
+
+Windows共通基盤・PowerShell・CUDA extra・Docker状態診断・Windows/Linux CIを追加。次にリモートWindows job結果とWindows実機の起動・終了・GPU・Desktopを確認する。Cloudでの型検査/依存解決とWindows実行は区別する。

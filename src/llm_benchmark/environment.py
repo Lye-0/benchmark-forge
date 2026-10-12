@@ -80,3 +80,30 @@ def backend_versions() -> dict:
         except PackageNotFoundError:
             values[name] = None
     return values
+
+
+def torch_status() -> dict:
+    """Explicit probe in a short-lived interpreter; base startup never imports Torch."""
+    import json
+    import sys
+
+    from llm_benchmark.platform_support import worker_environment
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "llm_benchmark.torch_probe"],
+            env=worker_environment(),
+            capture_output=True,
+            timeout=20,
+            check=True,
+        )
+        if len(result.stdout) > 64000:
+            raise ValueError("probe output limit")
+        return json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {
+            "available": False,
+            "cuda_available": None,
+            "live_model_verified": False,
+            "reason": "PyTorchを読み込めません。任意依存・DLL・ドライバーを確認してください（通常評価は利用可能）",
+        }

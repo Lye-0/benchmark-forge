@@ -1,6 +1,6 @@
 # Development rules
 
-- Follow docs/IMPLEMENTATION_BRIEF.md; record incomplete and unverified features honestly.
+- Follow docs/IMPLEMENTATION_BRIEF.md and docs/WINDOWS_IMPLEMENTATION_BRIEF.md (Windows-native additions); record incomplete and unverified features honestly.
 - Generate problems using deterministic algorithms only. Never call a model to generate them.
 - Keep grading answers out of model inputs. Freeze and persist complete sets before evaluation.
 - Default to localhost. Never execute submitted code or agent commands on the host.

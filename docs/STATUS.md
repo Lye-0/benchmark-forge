@@ -10,13 +10,13 @@
 | 1 | 24生成器、固定480件、freeze、重み、再現性、独立参照ソルバー | 意味的な構造同値検出は未実装 |
 | 2 | 日本語UI、三層選択、進捗、履歴、比較、独立評価・holdout入力 | 長期の大規模画面最適化は未検証 |
 | 3 | Ollamaストリーミング/初回テキスト計測・モデル申告情報、Transformers別プロセス、局所計測、Codex protocol Mock | 実モデル/CPU・GPU・WSL・CodexアカウントはNOT_VERIFIED |
-| 4 | DB v2試行履歴、即時中止、実プロセスクラッシュ復元、1000件保存、Docker使い捨て隔離採点 | ユーザーのWSLで同じ検証を通す必要あり。数日規模の負荷試験は未実施 |
+| 4 | DB v2試行履歴、即時中止、実プロセスクラッシュ復元、1000件保存、Docker使い捨て隔離採点 | ユーザーのWindows Docker Desktop / WSLで同じ検証を通す必要あり。数日規模の負荷試験は未実施 |
 | 5 | 24独立生成構造・15カテゴリ、テキスト型/ネイティブ型/複数ターン仮想世界の独立モード、開発用回答診断 | 一般知識の検証済み生成器なし。50〜80/100種類は長期目標。実モデルのtool能力未検証 |
 | 6 | 私有holdout、校正用観測JSONL、80%維持の保守的補助指標、専用速度試験、リソース表示、圧縮/逐次アーカイブ・CPU/GPU構成記録、運用文書 | 統計的な実測校正・正式Standard・tokenizer間で同一トークン長の比較は未達 |
 
 ## 今回実行した検証
 
-- 今回のpytest: **144 passed / 2 skipped**。実Docker2件は通常CPUチェックではskip。前回の`FORGE_TEST_DOCKER=1`では129件が通り、実Docker隔離を検証済みです。今回その2件は再実行していません。
+- 今回のpytest: **153 passed / 2 skipped**。別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
 - 新規検証: UTF-8分割NDJSON、可視chunkの時刻、終端欠落・過大応答・中止時のclose、モデル申告情報、GPU情報の欠落/異常、別スレッドでの逐次出力、出力中の更新に対するスナップショット整合、gzip既存ファイル保護。HTTP/機器応答はfixtureであり実モデル・GPU検証ではありません。
 - Ruff lint / format、mypy: PASS。
 - Vitest: **6 passed**。TypeScript / Vite: PASS。
@@ -44,4 +44,16 @@
 
 ## 利用者側でしか確認できない次の作業
 
-Cloud内で必要なCPU・Mock・Docker検証は実施しました。次はユーザーのWSL2/モデル環境でREADMEとWSL2.mdの手順を実行し、OllamaまたはTransformersの実推論とGPU・ドライバー条件を確認する段階です。認証値や私有問題をチャットへ貼る必要はありません。実行環境の差や失敗時の秘密を除いたエラー内容が、残る実機対応の判断材料になります。
+Cloud内のLinux/CPU・Mock・Docker検証を実施しました。次は[Windows手順](WINDOWS.md)でネイティブ起動・OllamaまたはTransformersの実推論・GPU・Docker Desktopを確認してください。通常評価にWSL2は不要です。認証値や私有問題をチャットへ貼る必要はありません。
+
+## Windowsネイティブ対応の追加（2026-10-12）
+
+- `fcntl`をWindowsのbyte-range lock / POSIX flockへ分離。別プロセス競合・終了後の解放・日本語/空白パスをテスト。
+- TransformersはWindows/Linuxに対応する実装。WindowsはJob Objectで子プロセスも終了、Linuxはprocess group。作成途中のキャンセルで生成されたプロセスも回収。RAMはWindows peak working set / Linux high-water RSSとして区別。
+- PowerShell setup/start/check/diagnoseを追加。Python 3.12をuvの`.venv`で管理、Node 24系・npmを維持。既存Python/グローバル環境・ポリシーを変更しない。
+- Windows CPU版 / CUDA 13.0版Torchを選択可能。公式indexとwheel hashesをuv.lockへ保存。Windows x64を指定した`uv sync --locked --dry-run`で両extraの解決を確認（インストール/実機推論ではない）。Windows対象のmypyもPASS。
+- Dockerは明示診断時とコード評価時のみ接続。未導入・接続不可・Windowsコンテナ・制限検証失敗を区別し、通常評価を継続。Cloudの実Linuxコンテナで9件PASS。Docker Desktopでは未検証。
+- UIに実行OS/CPU/GPU構成とPyTorch/CUDA明示診断を追加。CUDA診断はモデルをロードせず、未導入でもアプリ起動可能。
+- CIをubuntu-latest / windows-latestのmatrix化。WindowsではPowerShell 5.1のsetup/checkと、start.ps1を使うE2E、CPU版Torchの実インポート診断を設定。CloudからActions API取得は403で拒否されたため、リモートCI実行結果は未確認。設定追加をWindows成功とは記載しない。
+- LinuxでWebテスト6件、E2E4件、型検査・ビルドが成功。PowerShell実行、Windows Job Objectの実動作、Windows CUDA・Docker Desktop・実モデルはWindows側での確認待ち。
+- Codexの公式プロトコルMockは維持。live認証/隔離は従来どおり未検証で無効。今回モデル回答診断は不要な変更のため実LLM呼出は行っていない。

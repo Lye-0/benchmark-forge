@@ -6,7 +6,19 @@
 
 ## 起動
 
-前提：LinuxまたはWSL2 Ubuntu、Python 3.12、uv、Node.js 22または24、npm。開発で確認した環境はPython 3.12.14 / uv 0.12.23 / Node 24.19.0です。GPU・Docker・APIキー・有料契約は不要です。
+対象：Windows 11ネイティブ / Linux / WSL2 Ubuntu。前提はPython 3.12（uv管理）、Node.js 24系、npm。開発で確認した環境はPython 3.12.14 / uv 0.12.23 / Node 24.19.0です。GPU・Docker・APIキー・有料契約は不要です。
+
+
+### Windows（PowerShell）
+
+```powershell
+.\scripts\setup.ps1
+.\scripts\start.ps1
+```
+
+Windows版アプリはWSL2を経由しません。Pythonはuvの専用`.venv`、Node.jsは既存24系、npmを使用します。一般利用にmise・Dockerは不要です。詳しい環境準備、任意のCUDA、Docker Desktop、実機チェックは[Windows手順](docs/WINDOWS.md)を参照してください。
+
+### Linux / WSL2（Bash）
 
 ```bash
 cd benchmark-forge
@@ -27,7 +39,7 @@ bash scripts/start.sh
 
 ```bash
 # ターミナル1
-uv run forge serve --port 8000
+uv run --no-sync forge serve --port 8000
 # ターミナル2
 cd apps/web
 npm run dev
@@ -36,7 +48,7 @@ npm run dev
 Viteは `127.0.0.1:5173` で起動し、`/api` をバックエンドへプロキシします。ポートを変更する場合、バックエンドの `FORGE_WEB_ORIGIN` とViteの `FORGE_WEB_PORT` / `FORGE_API_PORT` を揃えます。例えばAPIを8001、Webを5174で動かす場合：
 
 ```bash
-FORGE_WEB_ORIGIN=http://127.0.0.1:5174 uv run forge serve --port 8001
+FORGE_WEB_ORIGIN=http://127.0.0.1:5174 uv run --no-sync forge serve --port 8001
 # 別ターミナル / apps/web
 FORGE_WEB_PORT=5174 FORGE_API_PORT=8001 npm run dev
 ```
@@ -44,19 +56,19 @@ FORGE_WEB_PORT=5174 FORGE_API_PORT=8001 npm run dev
 ## CLI
 
 ```bash
-uv run forge generators
-uv run forge generate --count 24 --seed 42
+uv run --no-sync forge generators
+uv run --no-sync forge generate --count 24 --seed 42
 # generate が表示したset_idを使用
-uv run forge run SET_ID --models mock-reference,mock-wrong
-uv run forge report RUN_ID --format markdown
-uv run forge report RUN_ID --format csv --output report.csv
+uv run --no-sync forge run SET_ID --models mock-reference,mock-wrong
+uv run --no-sync forge report RUN_ID --format markdown
+uv run --no-sync forge report RUN_ID --format csv --output report.csv
 ```
 
 `--generators math.linear,data.aggregate` 等で範囲を限定できます。`generate --output` は参照解答付きのセットを保存します。**そのファイルをモデル入力に渡さないでください。** 出力コマンドは既存ファイルを上書きしません。APIとCLIの評価プロセスを同じデータ領域で同時に起動すると、ファイルロックにより拒否します。
 
 ## ローカルモデル
 
-OllamaをWSL内でローカル起動し、ユーザー自身がモデルを用意します。「モデル」でバックエンド `Ollama`、モデル名、`http://127.0.0.1:11434`、リビジョン・量子化・推論条件を登録し、接続確認します。推論時には問題本文のみ送信します。リダイレクト、認証情報付きURL、外部ホスト、DNSによる接続先は拒否します。Ollamaの実モデル推論はこのクラウドでは未検証です。
+Windows版またはLinux/WSL2版Ollamaをローカル起動し、ユーザー自身がモデルを用意します。「モデル」でバックエンド `Ollama`、モデル名、`http://127.0.0.1:11434`、リビジョン・量子化・推論条件を登録し、接続確認します。推論時には問題本文のみ送信します。リダイレクト、認証情報付きURL、外部ホスト、DNSによる接続先は拒否します。Ollamaの実モデル推論はこのクラウドでは未検証です。
 
 Transformersは任意依存と専用推論ワーカーに対応しています（実モデル未検証、利用条件は下記）。Codex CLI / App Serverは公式のイベント契約とMock試験まで実装し、実行可能な隔離を検証できていないため実接続を無効にしています。認証キャッシュの解析・転用や有料APIへの代替は行いません。
 
@@ -83,9 +95,9 @@ E2Eは通常のデータ領域と別の一時DB・専用ポートを使用しま
 - RAM/VRAM/TTFTなど未測定の値はN/A。能力・速度・リソースを単一スコアに合成しません。
 - 外部データは含めていません。コードライセンスはユーザー未決定で、無断でMIT等を適用していません。
 
-詳しい進捗は [docs/STATUS.md](docs/STATUS.md)、次の開発は [docs/ROADMAP.md](docs/ROADMAP.md)、安全性は [docs/SECURITY.md](docs/SECURITY.md)、Windows向けの手順は [docs/WSL2.md](docs/WSL2.md) を参照してください。
+詳しい進捗は [docs/STATUS.md](docs/STATUS.md)、次の開発は [docs/ROADMAP.md](docs/ROADMAP.md)、安全性は [docs/SECURITY.md](docs/SECURITY.md)、Windowsネイティブの手順は [docs/WINDOWS.md](docs/WINDOWS.md)、Linux/WSL2は [docs/WSL2.md](docs/WSL2.md) を参照してください。
 
-### ローカルTransformers（Linux / WSL2、実モデル未検証）
+### ローカルTransformers（Windows / Linux / WSL2、実モデル未検証）
 
 任意依存は `uv sync --locked --extra transformers` で導入できます（Torchを含み大容量）。通常のMock/Ollama開発には不要です。Webのモデル登録でTransformersを選び、取得済みモデルのローカルディレクトリとCPU/CUDAを指定します。safetensors形式のみ対応し、ダウンロードやremote code実行はしません。量子化指定は現時点でN/Aまたはnoneに限定しています。
 
@@ -96,16 +108,16 @@ E2Eは通常のデータ領域と別の一時DB・専用ポートを使用しま
 「プロファイル・設定」に私有holdout、速度試験、ツール/コード評価があります。通常の能力評価と合算しません。試行履歴は再試行後も保持し、旧DBはv2へ自動移行します。更新前のバックアップはサービスを停止してデータ領域をコピーしてください。
 
 ```bash
-uv run forge import-holdout /path/to/private.jsonl
-uv run forge tool-set --mode agent --count 5
-uv run forge speed-probe --input-repetitions 100 --output-repetitions 32
-uv run forge code-set --count 5
+uv run --no-sync forge import-holdout /path/to/private.jsonl
+uv run --no-sync forge tool-set --mode agent --count 5
+uv run --no-sync forge speed-probe --input-repetitions 100 --output-repetitions 32
+uv run --no-sync forge code-set --count 5
 # 上記コマンドが返したSET_IDを使用
-uv run forge run SET_ID --models mock-reference
-uv run forge resume RUN_ID
-uv run forge resume RUN_ID --retry
-uv run forge report RUN_ID --format jsonl --output report.jsonl.gz --compress
-uv run forge calibration REAL_MODEL_RUN_ID --output observations.jsonl
+uv run --no-sync forge run SET_ID --models mock-reference
+uv run --no-sync forge resume RUN_ID
+uv run --no-sync forge resume RUN_ID --retry
+uv run --no-sync forge report RUN_ID --format jsonl --output report.jsonl.gz --compress
+uv run --no-sync forge calibration REAL_MODEL_RUN_ID --output observations.jsonl
 ```
 
 モデルはWebまたは `forge model-register /path/to/model-config.json` で登録します。私有問題の形式は [HOLDOUT.md](docs/HOLDOUT.md)。校正用の出力はMock・未完了・速度/ツール/コードを拒否します。
@@ -116,7 +128,7 @@ uv run forge calibration REAL_MODEL_RUN_ID --output observations.jsonl
 
 ```bash
 docker pull python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
-uv run forge sandbox-check
+uv run --no-sync forge sandbox-check
 FORGE_TEST_DOCKER=1 uv run pytest -q tests/test_sandbox.py
 ```
 
@@ -129,8 +141,8 @@ Ollama登録時に「ストリーミングで初回応答時間を測る」を�
 問題ログの「全問題・試行アーカイブ」または次のCLIで、実行条件・未回答を含む全問題・結果・全試行を順次JSONLへ出力できます。
 
 ```bash
-uv run forge archive RUN_ID archive.jsonl
-uv run forge archive RUN_ID archive.jsonl.gz --compress
+uv run --no-sync forge archive RUN_ID archive.jsonl
+uv run --no-sync forge archive RUN_ID archive.jsonl.gz --compress
 ```
 
 `forge-stream-v1`形式で、出力開始時のSQLiteスナップショットを保持します。結果・試行は1件ずつ処理しますが、確定問題セットはメモリに保持します。遅いダウンロード中はWALが拡大する可能性があります。**参照解答や私有問題を含むため、モデル入力に渡したり無条件に公開したりしないでください。** 通常のJSONLレポート形式とは異なります。

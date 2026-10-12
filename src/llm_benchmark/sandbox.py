@@ -74,6 +74,7 @@ class DockerSandbox:
             raise ValueError("隔離イメージはdigestで固定してください")
         self.image = image
         self.verified = False
+        self.state = "unchecked"
         self.reason = "実隔離テストをまだ実行していません"
 
     async def _run(self, code: str, seconds: float = 5) -> CodeResult:
@@ -159,7 +160,7 @@ class DockerSandbox:
                 output.decode("utf-8", errors="replace"),
                 state["ExitCode"],
             )
-        except (OSError, json.JSONDecodeError, KeyError, IndexError, TimeoutError) as exc:
+        except (OSError, ValueError, KeyError, IndexError, TypeError, TimeoutError) as exc:
             raise IsolationUnavailable("Docker隔離の作成・監査に失敗しました") from exc
         finally:
             # Container deletion, not just killing the docker client, terminates descendants.
@@ -182,7 +183,32 @@ class DockerSandbox:
 
     async def verify(self) -> dict:
         self.verified = False
+        self.state = "unavailable"
         try:
+            try:
+                rc, raw = await command("info", "--format", "{{.OSType}}", timeout=5)
+            except FileNotFoundError:
+                self.state = "not_installed"
+                raise IsolationUnavailable(
+                    "Dockerが見つかりません。コード評価のみDocker Desktop（Linuxコンテナ）またはDocker Engineが必要です"
+                ) from None
+            except (OSError, TimeoutError, ValueError):
+                self.state = "daemon_unavailable"
+                raise IsolationUnavailable(
+                    "Dockerに接続できません。Desktop/daemonの起動とアクセス権限を確認してください"
+                ) from None
+            if rc:
+                self.state = "daemon_unavailable"
+                raise IsolationUnavailable(
+                    "Dockerに接続できません。Desktop/daemonの起動とアクセス権限を確認してください"
+                )
+            if raw.strip() != b"linux":
+                self.state = "unsupported_engine"
+                raise IsolationUnavailable(
+                    "Linuxコンテナに切り替えてください。Windowsコンテナでのコード評価は無効です"
+                )
+            self.state = "verification_failed"
+
             # All code here is a fixed diagnostic fixture. No user/model code before validation.
             result = await self._run("""import os,socket,resource,json
 assert os.getuid() == 65534
@@ -217,10 +243,16 @@ print('isolation-ok')
             if oom.status != "oom" or timeout.status not in {"error", "timeout"}:
                 raise IsolationUnavailable("OOM/CPU時間制限の実検証に失敗しました")
             self.verified = True
+            self.state = "verified"
             self.reason = "non-root、通信禁止、read-only、cgroup制限、OOM、時間制限を実検証済み"
         except IsolationUnavailable as exc:
             self.reason = str(exc)
-        return {"available": self.verified, "reason": self.reason, "image": self.image}
+        return {
+            "available": self.verified,
+            "state": self.state,
+            "reason": self.reason,
+            "image": self.image,
+        }
 
     async def execute(self, code: str, seconds: float = 5) -> CodeResult:
         if not self.verified:
@@ -229,8 +261,10 @@ print('isolation-ok')
             raise ValueError("コードサイズまたは実行時間が範囲外です")
         try:
             return await self._run(code, seconds)
-        except IsolationUnavailable:
+        except IsolationUnavailable as exc:
             self.verified = False
+            self.state = "verification_failed"
+            self.reason = str(exc)
             raise
 
 

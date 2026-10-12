@@ -46,3 +46,5 @@ Transformersの追加依存は `uv sync --locked --extra transformers` で用意
 4. 専用速度試験は要求出力の遵守とcold/warm条件を確認して比較。
 
 CloudからこのPCのGPU・ドライバー・ローカルモデルを確認できません。失敗時は秘密を除いたエラーメッセージと使用バックエンドを記録してください。認証ファイルや個人データの共有は不要です。
+
+Windowsネイティブで使う場合は[WINDOWS.md](WINDOWS.md)を参照してください。通常評価にWSL2は不要です。WindowsとWSL2で`.venv`や`node_modules`を共有せず、OSごとに依存を準備してください。
