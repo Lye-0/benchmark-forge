@@ -117,7 +117,12 @@ class Store:
                 "peak_vram_bytes": None,
                 "peak_ram_bytes": None,
                 "gpu": None,
-                "resource_unavailable_reason": "プロセス別リソース計測は未実装",
+                "resource_unavailable_reason": "成功応答のresults[].metricsにワーカー局所計測を保存"
+                if model.backend == "transformers"
+                else "バックエンドのプロセス別計測は未対応",
+                "worker_policy": "cold-process-per-problem"
+                if model.backend == "transformers"
+                else "backend-managed",
                 "model_file_hash": None,
                 "chat_template": "backend-default",
                 "inference_seed": 0,

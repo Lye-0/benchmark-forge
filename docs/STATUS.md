@@ -11,8 +11,8 @@
 | 0 | 完了（Cloud CPU） | Python/uvロック、React/TS/npmロック、SQLite migration、CLI、API、テスト、CI定義、セットアップスクリプト |
 | 1 | 完了 | 14生成器、再現性、論理一意解、固定280件＋動的生成、表面重複除去、セットハッシュ、重み付き採点、保存、Mock実行 |
 | 2 | 完了 | 日本語ダークUI、三層/中間状態/検索/一括選択、5プリセット/ユーザー保存、freeze確認、複数モデル、SSE、履歴/概要/詳細/比較/設定 |
-| 3 | 一部 | Ollamaアダプター・接続確認・HTTP Mock契約、context_length送信、E2E/P50/P95、Codex protocol-only Mock。Transformers推論・Codex live・GPU計測は未完了 |
-| 4 | 一部 | 問題境界の一時停止/再開/中止、プロセス再起動の復元、一意結果キー、逐次評価、timeout/error、失敗のみ再試行。隔離ワーカーは未実装で無効 |
+| 3 | 一部 | Ollamaアダプター・接続確認・HTTP Mock契約、context_length送信、E2E/P50/P95、Codex protocol-only Mock。Transformers別プロセス推論・局所計測の経路を追加（実モデル/GPUは未検証）。Codex liveは未完了 |
+| 4 | 一部 | 問題境界の一時停止/再開・in-flight中止、プロセス再起動の復元、一意結果キー、逐次評価、timeout/error、失敗のみ再試行。隔離ワーカーは未実装で無効 |
 | 5 | 一部 | 16カテゴリ管理 / 9カテゴリで14独立構造、テキスト型ツール選択、sub-agent診断。20〜30構造目標、native/agent模擬世界は未完了 |
 | 6 | 一部 | 内訳・10難易度帯とWilson区間、CSV/JSONL/Markdown、比較条件警告、方法論/WSL2/安全性文書。校正・私有holdout import・専用速度測定は未完了 |
 
@@ -20,10 +20,10 @@
 
 | 検証 | 結果 | 内容 |
 |---|---|---|
-| pytest | **76 passed** | 生成器を5難易度×8seedで検証、280固定問題の再現/参照照合、真偽全探索一意解、難易度特徴量、freeze/比率/不足拒否、採点と型、重み、再開/重複防止、API/CLI、Origin/Host/SSRF、Codex Mock |
+| pytest | **86 passed** | 生成器を5難易度×8seedで検証、280固定問題の再現/参照照合、真偽全探索一意解、難易度特徴量、freeze/比率/不足拒否、採点と型、重み、再開/重複防止、API/CLI、Origin/Host/SSRF、Codex Mock |
 | Ruff lint / format | **PASS** | src / tests / scripts |
-| mypy | **PASS** | バックエンド13ファイル |
-| Vitest | **5 passed** | 三層選択/indeterminate、検索/折りたたみ/一括、N/A、APIエラー/JSON送信、設定変更時の古いfreeze応答破棄 |
+| mypy | **PASS** | バックエンド15ファイル |
+| Vitest | **6 passed** | 三層選択/indeterminate、検索/折りたたみ/一括、N/A、APIエラー/JSON送信、設定変更時の古いfreeze応答破棄、Transformers登録条件 |
 | TypeScript / Vite | **PASS** | 型チェックと本番ビルド |
 | Playwright / system Chromium | **2 passed** | 100問の設定→freeze→実行→一時停止/再開→ログ→リロード→同一セット比較、および390px幅のナビ/検索/横overflowなし |
 | setup.sh 再実行 | **PASS** | frozen uv/npm依存とUIビルドを再実行し、保護されたロックを変更しない |
@@ -48,10 +48,22 @@ Ollamaの保存済みcontext_lengthがリクエストに反映されない問題
 ## 未実施・無効・制約
 
 - **NOT_VERIFIED**: Ollama実モデル、Codex CLI/App Server実アカウント、ChatGPT公式preview条件/登録/サインイン、WSL2/GPU/ドライバー。
-- **未実装・無効**: Transformers推論ワーカー、モデル生成コード/ホストコマンド実行、Docker隔離ワーカー、native tools、複数ターンagent、Codex live transport。
+- **未実装・無効**: モデル生成コード/ホストコマンド実行、Docker隔離ワーカー、native tools、複数ターンagent、Codex live transport。
 - **実侵入試験は未実施**: ホスト秘密の読取禁止、ネットワーク禁止、non-root、CPU/RAM/PID制限等。現在確認したのは隔離不能時に機能が停止することであり、Docker安全性の実証ではありません。
-- **未完成**: 正式Standard、実測難易度/80%維持点推定、意味的重複判定、private holdout import、大量artifact管理、完全な試行履歴、in-flightの即時cancel、長時間の負荷試験、GPU/プロセスPeak/TTFT/統一長速度試験。
+- **未完成**: 正式Standard、実測難易度/80%維持点推定、意味的重複判定、private holdout import、大量artifact管理、完全な試行履歴、長時間の負荷試験、GPU実機/TTFT/統一長速度試験。
 - Cloudの公式資料サイトとPlaywright CDNはproxyから403。公式Codex資料はGitHubの公式ソースと認証不要のCLI schemaで確認。ブラウザ検証は既存system Chromiumを使用し、TLS検証等を無効化していません。
 - コードライセンスはユーザー未確定。外部データセット・モデル重み・認証情報を含めていません。
 
 次の具体的な実装順はROADMAP.mdに記録しています。既存のCloud taskは隔離されたcheckoutなので、ユーザー指定がない限りworktreeを追加しません。
+
+## 続行実装: Transformersと即時中止
+
+Linux / WSL2向けに、取得済みローカルモデルを別プロセスでロードする経路を追加。safetensors限定・remote code禁止・オフライン設定・環境変数の許可リストを使用します。CPU/CUDAを明示選択し、量子化指定は未対応として拒否します。コンテキスト超過は切り捨てず失敗します。
+
+問題ごとにプロセスを作成し、モデルロード時間、prefill込み生成時間、プロセス生涯のPeak RSS、CUDA時のPyTorch割当Peak、ライブラリ版を成功結果に保存し、UIログとJSONLに表示。decode速度/TTFTは欠測。cold起動のE2Eをwarm推論速度と比較しないでください。失敗・中止時のリソース値は未取得です。
+
+中止は実行中のawaitをキャンセルし、Transformersのプロセスグループを終了・回収して次のランへ進みます。OllamaはHTTP待機を停止しますがサーバー内推論の停止保証はありません。pauseは問題境界のままです。
+
+追加検証は実OSプロセスの正常終了/timeout/cancel/異常応答/出力過大時の回収、公開問題だけの転送、ライブラリMockでのロード/生成契約、結果計測の保存、実行中止後のキュー継続です。実モデルのロード・回答、CUDA計測は **NOT_VERIFIED**。このCloudに大容量の任意依存やモデル重みは追加していません。
+
+このプロセス境界は推論のライフサイクル管理用です。ファイルシステムやネットワークを隔離するsandboxではなく、生成コードやCodex live実行を許可する根拠にはしません。

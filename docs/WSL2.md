@@ -16,7 +16,7 @@ Ollamaは同じWSL環境にローカルサービスとして用意し、必要�
 
 Webの「モデル」でOllamaのモデル名・リビジョン・量子化・推論設定を登録し、接続確認後に評価します。APIがWSL内にありOllamaがWindows側にある構成は現在のliteral loopback制限で利用できない場合があります。外部IPを無条件に許可せず、同じWSL側のOllamaを優先してください。
 
-Transformersの追加依存は `uv sync --extra transformers` で用意できますが、**推論ワーカーは未実装**なので、この操作でアダプターが有効になるわけではありません。GPU用torch/CUDA構成は別途検証が必要で、不要なCloud CPU開発では追加しません。
+Transformersの追加依存は `uv sync --locked --extra transformers` で用意できます。取得済みのsafetensorsモデルをローカルディレクトリで指定し、CPU/CUDAを選択します。別プロセスの契約テストは完了していますが、実モデル推論は未検証です。GPU用torch/CUDA構成は別途検証が必要で、不要なCloud CPU開発では追加しません。
 
 ## オフライン運用
 

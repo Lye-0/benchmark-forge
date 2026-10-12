@@ -30,4 +30,4 @@ SQLiteは短いトランザクション、WAL、foreign_keys、busy timeoutを�
 
 UIは表示・フォーム・接続管理のみで、生成・採点・集計を実装しません。ルートはhash形式で、リロード後も結果画面に戻れます。開発ではViteのプロキシ、ビルド後はFastAPIで静的配信。同一Originで完結する既定構成です。
 
-隔離ワーカー、Transformersワーカー、Codexの実通信transport、ChatGPTサインインは未実装/未検証です。未検証の経路は `available=false` とし、通常のrun作成時に拒否します。存在するDockerやCodexバイナリだけで安全性・認証・推論を成立したことにしません。
+Transformersは問題ごとの別プロセスで、ローカルsafetensorsモデルをCPU/CUDAにロードします。依存・モデルディレクトリ・設定の事前条件を満たせば利用可能ですが、実推論はNOT_VERIFIEDです。タイムアウト/中止時はプロセスグループをkillし回収します。この境界はsandboxではありません。隔離ワーカー、Codexの実通信transport、ChatGPTサインインは未実装/未検証です。これらの経路は `available=false` とし、通常のrun作成時に拒否します。存在するDockerやCodexバイナリだけで安全性・認証・推論を成立したことにしません。

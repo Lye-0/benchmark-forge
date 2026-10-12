@@ -99,6 +99,7 @@ class ModelConfig(StrictModel):
     revision: str = Field(default="unrecorded", max_length=200)
     quantization: str = Field(default="N/A", max_length=80)
     context_length: int | None = Field(default=None, ge=1, le=10_000_000)
+    device: Literal["cpu", "cuda"] = "cpu"
     temperature: float = Field(default=0, ge=0, le=2)
     max_tokens: int = Field(default=512, ge=1, le=32768)
     timeout_seconds: float = Field(default=30, ge=0.1, le=600)
@@ -115,6 +116,7 @@ class Response(StrictModel):
     output_tokens: int | None = None
     decode_seconds: float | None = None
     ttft_seconds: float | None = None
+    metrics: dict[str, Any] = Field(default_factory=dict)
 
 
 class Grade(StrictModel):
@@ -134,3 +136,4 @@ class Result(StrictModel):
     output_tokens: int | None = None
     decode_tokens_per_second: float | None = None
     ttft_seconds: float | None = None
+    metrics: dict[str, Any] = Field(default_factory=dict)

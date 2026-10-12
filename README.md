@@ -58,7 +58,7 @@ uv run forge report RUN_ID --format csv --output report.csv
 
 OllamaをWSL内でローカル起動し、ユーザー自身がモデルを用意します。「モデル」でバックエンド `Ollama`、モデル名、`http://127.0.0.1:11434`、リビジョン・量子化・推論条件を登録し、接続確認します。推論時には問題本文のみ送信します。リダイレクト、認証情報付きURL、外部ホスト、DNSによる接続先は拒否します。Ollamaの実モデル推論はこのクラウドでは未検証です。
 
-Transformersは依存関係をオプション化していますが、専用推論ワーカーは未実装です。Codex CLI / App Serverは公式のイベント契約とMock試験まで実装し、実行可能な隔離を検証できていないため実接続を無効にしています。認証キャッシュの解析・転用や有料APIへの代替は行いません。
+Transformersは任意依存と専用推論ワーカーに対応しています（実モデル未検証、利用条件は下記）。Codex CLI / App Serverは公式のイベント契約とMock試験まで実装し、実行可能な隔離を検証できていないため実接続を無効にしています。認証キャッシュの解析・転用や有料APIへの代替は行いません。
 
 ## 検証
 
@@ -84,3 +84,9 @@ E2Eは通常のデータ領域と別の一時DB・専用ポートを使用しま
 - 外部データは含めていません。コードライセンスはユーザー未決定で、無断でMIT等を適用していません。
 
 詳しい進捗は [docs/STATUS.md](docs/STATUS.md)、次の開発は [docs/ROADMAP.md](docs/ROADMAP.md)、安全性は [docs/SECURITY.md](docs/SECURITY.md)、Windows向けの手順は [docs/WSL2.md](docs/WSL2.md) を参照してください。
+
+### ローカルTransformers（Linux / WSL2、実モデル未検証）
+
+任意依存は `uv sync --locked --extra transformers` で導入できます（Torchを含み大容量）。通常のMock/Ollama開発には不要です。Webのモデル登録でTransformersを選び、取得済みモデルのローカルディレクトリとCPU/CUDAを指定します。safetensors形式のみ対応し、ダウンロードやremote code実行はしません。量子化指定は現時点でN/Aまたはnoneに限定しています。
+
+問題ごとにモデルをロードするため、タイムアウトにはロード時間も含まれます。実行中の中止はワーカーを終了します。ロード・生成時間とメモリは問題ログ/JSONLに記録します。生成時間はprefill込みでありdecode速度ではありません。詳細な検証範囲は [STATUS](docs/STATUS.md) を参照してください。

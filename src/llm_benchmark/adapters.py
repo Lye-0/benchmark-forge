@@ -1,7 +1,6 @@
 """Only public prompts cross the adapter boundary. Mock is never a model score."""
 
 import asyncio
-import importlib.util
 import json
 import statistics
 from datetime import datetime, timedelta
@@ -223,13 +222,15 @@ def capabilities(config: ModelConfig) -> dict:
             "reason": "ローカル接続対応。実モデル推論は未検証",
         }
     if config.backend == "transformers":
-        installed = importlib.util.find_spec("transformers") is not None
+        from llm_benchmark.transformers_adapter import readiness
+
+        reason = readiness(config)
         return {
             **common,
-            "available": False,
-            "status": "unavailable",
-            "reason": "専用推論ワーカーは次フェーズで実装予定"
-            + ("（パッケージ導入済み）" if installed else "（GPU依存未導入）"),
+            "available": reason is None,
+            "status": "unavailable" if reason else "NOT_VERIFIED",
+            "reason": reason
+            or "別プロセス・ローカルモデル専用。実推論は未検証。問題ごとにロードします",
         }
     return {
         **common,
@@ -245,4 +246,11 @@ def make_adapter(config: ModelConfig) -> Adapter:
         return MockAdapter(config)
     if config.backend == "ollama":
         return OllamaAdapter(config)
+    if config.backend == "transformers":
+        from llm_benchmark.transformers_adapter import TransformersAdapter, readiness
+
+        reason = readiness(config)
+        if reason:
+            raise AdapterError(reason)
+        return TransformersAdapter(config)
     raise AdapterError(capabilities(config)["reason"])

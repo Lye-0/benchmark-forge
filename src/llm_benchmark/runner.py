@@ -147,6 +147,7 @@ class Scheduler:
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.task: asyncio.Task | None = None
         self.lock: TextIO | None = None
+        self.active: tuple[str, asyncio.Task] | None = None
 
     def start(self):
         self.lock = (self.store.path.parent / "runner.lock").open("a")
@@ -191,6 +192,8 @@ class Scheduler:
             self.store.status(id, "pausing" if status == "running" else "paused")
         elif action == "cancel" and status in {"queued", "running", "pausing", "paused"}:
             self.store.status(id, "cancelled")
+            if self.active and self.active[0] == id:
+                self.active[1].cancel()
         elif action == "resume" and status == "paused":
             self.store.status(id, "queued")
             self.queue.put_nowait(id)
@@ -237,10 +240,15 @@ class Scheduler:
                 "error"
             )
             tokens = speed = ttft = None
+            metrics = {}
             try:
-                response = await asyncio.wait_for(
-                    adapter.complete(problem.public()), timeout=config.timeout_seconds
-                )
+                pending = asyncio.create_task(adapter.complete(problem.public()))
+                self.active = (id, pending)
+                try:
+                    response = await asyncio.wait_for(pending, timeout=config.timeout_seconds)
+                finally:
+                    self.active = None
+                metrics = response.metrics
                 answer = response.text
                 tokens = response.output_tokens
                 ttft = response.ttft_seconds
@@ -252,6 +260,16 @@ class Scheduler:
                     result = grade(answer, problem.answer_spec)
                     correct, reason = result.correct, result.reason
                     outcome = "correct" if correct else "incorrect"
+            except asyncio.CancelledError:
+                # A user cancellation stops this request, not the scheduler or the next run.
+                current = asyncio.current_task()
+                if (
+                    self.store.run(id)["status"] == "cancelled"
+                    and current
+                    and not current.cancelling()
+                ):
+                    return
+                raise
             except TimeoutError:
                 outcome, reason = "timeout", "応答タイムアウト"
             except AdapterError as e:
@@ -274,6 +292,7 @@ class Scheduler:
                     output_tokens=tokens,
                     decode_tokens_per_second=speed,
                     ttft_seconds=ttft,
+                    metrics=metrics,
                 ),
             )
         status = self.store.run(id)["status"]

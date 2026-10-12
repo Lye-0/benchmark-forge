@@ -155,3 +155,57 @@ def test_crash_recovery_does_not_change_completed_runs(store, frozen):
     store.status(id, "completed")
     store.recover()
     assert store.run(id)["status"] == "completed"
+
+
+async def test_cancel_inflight_releases_next_run_immediately(store, frozen, monkeypatch):
+    from llm_benchmark.adapters import MockAdapter
+
+    entered, stopped = asyncio.Event(), asyncio.Event()
+
+    class BlockingAdapter:
+        async def complete(self, problem):
+            entered.set()
+            try:
+                await asyncio.sleep(60)
+            finally:
+                stopped.set()
+
+    monkeypatch.setattr(
+        "llm_benchmark.runner.make_adapter",
+        lambda config: (
+            BlockingAdapter() if config.model_id == "mock-reference" else MockAdapter(config)
+        ),
+    )
+    scheduler = Scheduler(store)
+    scheduler.start()
+    try:
+        first, second = scheduler.create(frozen.set_id, ["mock-reference", "mock-wrong"])
+        await asyncio.wait_for(entered.wait(), 1)
+        scheduler.control(first, "cancel")
+        await asyncio.wait_for(stopped.wait(), 1)
+        await asyncio.wait_for(scheduler.queue.join(), 3)
+        assert not store.run(first)["results"]
+        assert store.run(first)["status"] == "cancelled"
+        assert store.run(second)["status"] == "completed"
+    finally:
+        await scheduler.close()
+
+
+async def test_worker_metrics_survive_storage_and_report(store, frozen, monkeypatch):
+    from llm_benchmark.domain import Response
+
+    class MeasuredAdapter:
+        async def complete(self, problem):
+            return Response(text="fixture", metrics={"peak_ram_bytes": 123456, "load_seconds": 0.5})
+
+    monkeypatch.setattr("llm_benchmark.runner.make_adapter", lambda config: MeasuredAdapter())
+    scheduler = Scheduler(store)
+    scheduler.start()
+    try:
+        id = scheduler.create(frozen.set_id, ["mock-reference"])[0]
+        await scheduler.queue.join()
+        result = summarize(store, id)["results"][0]
+        assert result["metrics"]["peak_ram_bytes"] == 123456
+        assert result["decode_tokens_per_second"] is None
+    finally:
+        await scheduler.close()
