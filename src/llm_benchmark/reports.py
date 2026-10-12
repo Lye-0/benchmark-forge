@@ -70,3 +70,12 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
         lines += ["", *[f"- {warning}" for warning in report["warnings"]]]
         return "\n".join(lines) + "\n", "text/markdown"
     raise ValueError("未対応の出力形式です")
+
+
+def stream_jsonl(store, run_id: str):
+    rows = store.iter_export(run_id)
+    try:
+        for row in rows:
+            yield json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n"
+    finally:
+        rows.close()

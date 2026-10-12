@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from llm_benchmark.domain import FrozenSet, ModelConfig, Result, canonical
+from llm_benchmark.environment import backend_versions, hardware_inventory
 
 
 def now() -> str:
@@ -36,8 +37,8 @@ class Store:
         self.migrate()
 
     @contextmanager
-    def connection(self):
-        con = sqlite3.connect(self.path, timeout=15)
+    def connection(self, *, cross_thread: bool = False):
+        con = sqlite3.connect(self.path, timeout=15, check_same_thread=not cross_thread)
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys=ON")
         try:
@@ -118,13 +119,17 @@ class Store:
         id = f"run-{uuid.uuid4().hex[:24]}"
         with self.connection() as con:
             environment = {
+                **hardware_inventory(),
+                "package_versions": backend_versions(),
                 "os": platform.platform(),
                 "python": platform.python_version(),
                 "cpu": platform.machine(),
                 "execution_policy": "sequential",
                 "warmup": False,
                 "batch_size": 1,
-                "streaming": False,
+                "streaming": model.backend == "ollama"
+                and model.streaming
+                and self.get_set(set_id).config.evaluation_mode not in {"native-tools", "agent"},
                 "peak_vram_bytes": None,
                 "peak_ram_bytes": None,
                 "gpu": None,
@@ -271,6 +276,55 @@ class Store:
                 "UPDATE runs SET status='queued',updated_at=?,revision=revision+1 WHERE id=?",
                 (now(), id),
             )
+
+    def iter_export(self, id: str):
+        """Consistent SQLite read snapshot. Only one result/attempt is decoded at a time.
+
+        The frozen set is kept in memory; slow consumers retain a WAL read snapshot.
+        """
+        # StreamingResponse advances this generator sequentially across worker threads.
+        with self.connection(cross_thread=True) as con:
+            con.execute("BEGIN")
+            row = con.execute("SELECT * FROM runs WHERE id=?", (id,)).fetchone()
+            if row is None:
+                raise KeyError("ランが見つかりません")
+            frozen = FrozenSet.model_validate_json(
+                con.execute("SELECT data FROM sets WHERE id=?", (row["set_id"],)).fetchone()[0]
+            )
+            header = {
+                **dict(row),
+                "model": json.loads(row["model"]),
+                "environment": json.loads(row["environment"]),
+                "set_hash": frozen.set_hash,
+                "profile_version": frozen.profile_version,
+                "grader_version": frozen.grader_version,
+                "config": frozen.config.model_dump(),
+                "weights": frozen.weights,
+                "set_metadata": frozen.metadata,
+                "warnings": frozen.warnings,
+                "total": len(frozen.problems),
+                "test_only": json.loads(row["model"])["backend"] == "mock",
+                "export_schema": "forge-stream-v1",
+            }
+            yield {"type": "run", **header}
+            # Include the full frozen set even for interrupted/unanswered problems.
+            for index, problem in enumerate(frozen.problems):
+                yield {"type": "problem", "index": index, **problem.model_dump()}
+            for row in con.execute("SELECT data FROM results WHERE run_id=? ORDER BY idx", (id,)):
+                result = json.loads(row[0])
+                yield {
+                    "type": "result",
+                    **result,
+                    "problem": frozen.problems[result["index"]].model_dump(),
+                }
+            for row in con.execute(
+                "SELECT * FROM attempts WHERE run_id=? ORDER BY idx,ordinal", (id,)
+            ):
+                yield {
+                    "type": "attempt",
+                    **dict(row),
+                    "data": json.loads(row["data"]) if row["data"] else None,
+                }
 
     def save_preset(self, name: str, config: dict) -> str:
         id = f"user-{uuid.uuid4().hex[:12]}"

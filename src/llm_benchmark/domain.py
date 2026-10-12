@@ -102,6 +102,7 @@ class ModelConfig(StrictModel):
     revision: str = Field(default="unrecorded", max_length=200)
     quantization: str = Field(default="N/A", max_length=80)
     context_length: int | None = Field(default=None, ge=1, le=10_000_000)
+    streaming: bool = False
     native_tools: bool = False
     device: Literal["cpu", "cuda"] = "cpu"
     temperature: float = Field(default=0, ge=0, le=2)

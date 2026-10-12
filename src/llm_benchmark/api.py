@@ -17,7 +17,7 @@ from llm_benchmark.adapters import AdapterError, OllamaAdapter, capabilities, va
 from llm_benchmark.code_eval import CodeConfig, build_code_set
 from llm_benchmark.domain import ModelConfig, SetConfig, StartRun, StrictModel
 from llm_benchmark.generators import REGISTRY, registry_tree
-from llm_benchmark.reports import export_report
+from llm_benchmark.reports import export_report, stream_jsonl
 from llm_benchmark.runner import Scheduler, comparison, summarize
 from llm_benchmark.sandbox import sandbox_status
 from llm_benchmark.sets import build_set, presets
@@ -285,6 +285,15 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             stream(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.get("/api/runs/{run_id}/archive")
+    def archive(run_id: str):
+        store.run_status(run_id)
+        return StreamingResponse(
+            stream_jsonl(store, run_id),
+            media_type="application/x-ndjson",
+            headers={"Content-Disposition": f'attachment; filename="{run_id}-archive.jsonl"'},
         )
 
     @app.get("/api/runs/{run_id}/export/{format}")

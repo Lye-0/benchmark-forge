@@ -152,6 +152,7 @@ def comparison(reports: list[dict]) -> dict:
                     r["model"]["timeout_seconds"],
                     r["model"].get("context_length"),
                     r["model"].get("device"),
+                    r["model"].get("streaming", False),
                 )
                 for r in reports
             }

@@ -121,3 +121,16 @@ FORGE_TEST_DOCKER=1 uv run pytest -q tests/test_sandbox.py
 ```
 
 Webのコード評価は開始時に隔離検証し、CLIのコード評価も同じプロセスで検証します。Docker socketをモデル・コンテナへ渡さず、ネットワークとホストmountを禁止します。検証できない環境では無効です。詳細は [SECURITY.md](docs/SECURITY.md)。
+
+### 初回応答時間と全記録の出力
+
+Ollama登録時に「ストリーミングで初回応答時間を測る」を有効化できます。問題ログの「初回テキスト受信」はHTTP要求開始から最初の可視テキストchunkまでの時間です。内部の最初のtoken時刻とは異なり、非streaming・空回答・ツール評価ではN/Aです。途中切断や終端の欠落を成功扱いしません。
+
+問題ログの「全問題・試行アーカイブ」または次のCLIで、実行条件・未回答を含む全問題・結果・全試行を順次JSONLへ出力できます。
+
+```bash
+uv run forge archive RUN_ID archive.jsonl
+uv run forge archive RUN_ID archive.jsonl.gz --compress
+```
+
+`forge-stream-v1`形式で、出力開始時のSQLiteスナップショットを保持します。結果・試行は1件ずつ処理しますが、確定問題セットはメモリに保持します。遅いダウンロード中はWALが拡大する可能性があります。**参照解答や私有問題を含むため、モデル入力に渡したり無条件に公開したりしないでください。** 通常のJSONLレポート形式とは異なります。

@@ -33,7 +33,8 @@
 ## 測定と比較
 
 - レイテンシはアダプター呼び出しのE2E wall time。回答ごとの値とP50/P95を保存。
-- Ollamaが返すeval_count/eval_durationからのみdecode tok/sを計算。TTFTは非streamingなのでnull。
+- Ollamaが返すeval_count/eval_durationからのみdecode tok/sを計算。streamingを明示的に有効化した場合のみ、HTTP要求開始から最初の空でない可視テキストchunk受信までをTTFT欄に保存します。thinkingや内部の最初のtoken時刻は測りません。非streaming・空回答・ツール評価はnull。ロード/prefill/total時間はOllama申告値として区別します。
+- 実行アプリ側のCPU、RAM総容量、任意のnvidia-smiによるGPU名・ドライバー・VRAM総容量とインストール済みパッケージ版を記録。初回取得をプロセス内でキャッシュし、使用率・電力・推論プロセスのPeakとは区別します。取得不能はnullと理由を保持。
 - モデル版・量子化・温度・最大出力・コンテキスト長・推論seed・逐次実行・バッチサイズ・warmup・OS/Pythonを保存。
 - Transformersの成功応答でワーカーPeak RSS、CUDA時のallocator Peak、ロード時間、prefill込み生成時間と版を保存。失敗時や取得不能な指標はN/A。GPU実機は未検証。
 - 専用Speed probeは同じ入力文・要求出力長の反復。tokenizerごとにトークン数が異なり、要求長未達を同一長の速度とは扱いません。能力評価とは独立です。
@@ -45,3 +46,5 @@
 実測校正に備えた観測値は `forge calibration RUN_ID --output observations.jsonl` で出力できます。完了した実モデルの能力評価のみを対象とし、問題ID・版・セットハッシュ・推論設定・成否・試行数を含めます。`empirical_difficulty`はnullのままで、観測を校正済み値と偽りません。
 
 ネイティブツール、複数ターン仮想在庫、コード生成は独立モードです。テキストのツール選択問題と合算しません。ツールの禁止操作やschema違反は誤答、通信障害はerrorとして記録します。コード採点のE2Eは隔離実行時間も含み、通常のテキスト推論速度と同一視しません。
+
+Ollamaの接続確認は公式`/api/show`のcapabilities・context length・templateのハッシュを返します。モデル申告情報であり、実推論検証やツール評価の自動有効化ではありません。API契約は2026-10-12に[公式API資料](https://github.com/ollama/ollama/blob/main/docs/api.md)で再確認しました。

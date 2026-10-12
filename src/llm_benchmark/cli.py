@@ -128,6 +128,28 @@ def serve(port: int = int(os.environ.get("FORGE_API_PORT", "8000"))):
     uvicorn.run(create_app(), host="127.0.0.1", port=port)
 
 
+@app.command("archive")
+def archive(run_id: str, output: Path, compress: bool = False):
+    """全問題・結果・試行を逐次JSONLへ出力。未回答問題も保持。"""
+    import gzip
+
+    from llm_benchmark.reports import stream_jsonl
+
+    db = store()
+    try:
+        db.run_status(run_id)
+        with (
+            gzip.open(output, "xt", encoding="utf-8")
+            if compress
+            else output.open("x", encoding="utf-8") as file
+        ):
+            for line in stream_jsonl(db, run_id):
+                file.write(line)
+    except (OSError, ValueError, KeyError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+
 @app.command("tool-set")
 def tool_set(mode: str = "native-tools", count: int = 5, seed: int = 42):
     """native-tools / agentの独立セットを作成。"""

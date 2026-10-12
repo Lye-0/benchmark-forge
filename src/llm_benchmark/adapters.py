@@ -3,13 +3,15 @@
 import asyncio
 import json
 import statistics
+import time
 from datetime import datetime, timedelta
 from typing import Protocol
 from urllib.parse import urlsplit
 
 import httpx
 
-from llm_benchmark.domain import ModelConfig, PublicProblem, Response, canonical
+from llm_benchmark.domain import ModelConfig, PublicProblem, Response, canonical, digest
+from llm_benchmark.ollama_wire import finish, read_json, read_stream
 
 
 class AdapterError(RuntimeError):
@@ -165,30 +167,28 @@ class OllamaAdapter:
                 }
                 if self.config.context_length is not None:
                     options["num_ctx"] = self.config.context_length
-                response = await client.post(
+                started = time.perf_counter()
+                async with client.stream(
+                    "POST",
                     self.endpoint + "/api/chat",
                     json={
                         "model": self.config.model,
-                        "stream": False,
+                        "stream": self.config.streaming,
                         "messages": [{"role": "user", "content": problem.prompt}],
                         "options": options,
                     },
-                )
-                response.raise_for_status()
-                data = response.json()
-                text = data["message"]["content"]
-                if not isinstance(text, str) or len(text) > 200_000:
-                    raise ValueError("invalid response")
-                tokens = data.get("eval_count")
-                duration = data.get("eval_duration")
-                return Response(
-                    text=text,
-                    output_tokens=tokens,
-                    decode_seconds=duration / 1e9 if duration and duration > 0 else None,
-                )
+                ) as response:
+                    response.raise_for_status()
+                    if self.config.streaming:
+                        return await read_stream(response, started)
+                    data = await read_json(response)
+                    text = data["message"]["content"]
+                    if not isinstance(text, str):
+                        raise ValueError("invalid response")
+                    return finish(text, data)
             except httpx.TimeoutException as e:
                 raise TimeoutError("Ollama応答タイムアウト") from e
-            except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+            except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as e:
                 # Upstream response bodies and URLs can contain secrets: never expose them.
                 raise AdapterError(
                     "Ollama通信・応答エラー。ローカルサービスとモデル名を確認してください"
@@ -232,19 +232,70 @@ class OllamaAdapter:
 
     async def check(self) -> dict:
         async with httpx.AsyncClient(
-            timeout=3, trust_env=False, transport=self.transport
+            timeout=3, trust_env=False, follow_redirects=False, transport=self.transport
         ) as client:
             try:
-                r = await client.get(self.endpoint + "/api/tags")
-                r.raise_for_status()
-                names = [m["name"] for m in r.json()["models"]]
-                found = self.config.model in names or self.config.model + ":latest" in names
+                async with client.stream("GET", self.endpoint + "/api/tags") as r:
+                    r.raise_for_status()
+                    data = await read_json(r)
+                models = data["models"]
+                names = [m["name"] for m in models]
+                selected = next(
+                    (
+                        m
+                        for m in models
+                        if m["name"] in {self.config.model, self.config.model + ":latest"}
+                    ),
+                    None,
+                )
+                if selected is None:
+                    return {
+                        "status": "model_missing",
+                        "reason": "指定モデルが見つかりません",
+                        "models": names,
+                    }
+                detected = None
+                template_hash = None
+                context = None
+                # Older backends may lack /show capabilities: unknown is not unsupported.
+                try:
+                    async with client.stream(
+                        "POST", self.endpoint + "/api/show", json={"model": self.config.model}
+                    ) as r:
+                        r.raise_for_status()
+                        info = await read_json(r)
+                    values = info.get("capabilities")
+                    if isinstance(values, list) and all(isinstance(v, str) for v in values):
+                        detected = {"tools": "tools" in values, "vision": "vision" in values}
+                    if isinstance(info.get("template"), str):
+                        template_hash = digest(info["template"])
+                    context = next(
+                        (
+                            v
+                            for k, v in info.get("model_info", {}).items()
+                            if k.endswith(".context_length")
+                            and type(v) is int
+                            and 0 < v <= 10_000_000
+                        ),
+                        None,
+                    )
+                except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError):
+                    pass
+                reason = "接続確認済み。実推論は未検証。"
+                reason += (
+                    " モデルのツール対応情報なし。"
+                    if detected is None
+                    else " モデルのツール対応: "
+                    + ("あり（申告情報）" if detected["tools"] else "なし")
+                )
                 return {
-                    "status": "connected" if found else "model_missing",
+                    "status": "connected",
                     "models": names,
-                    "reason": "接続確認済み。実推論はローカルで別途検証してください"
-                    if found
-                    else "指定モデルが見つかりません",
+                    "reason": reason,
+                    "detected_capabilities": detected,
+                    "template_hash": template_hash,
+                    "context_length": context,
+                    "live_verified": False,
                 }
             except (httpx.HTTPError, ValueError, KeyError, TypeError):
                 return {"status": "unavailable", "reason": "Ollamaに接続できません"}
