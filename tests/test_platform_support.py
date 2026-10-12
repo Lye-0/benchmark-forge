@@ -157,3 +157,33 @@ def test_missing_torch_is_optional(monkeypatch):
     value = torch_status()
     assert not value["available"] and value["cuda_available"] is None
     assert "secret-fixture" not in str(value)
+
+
+def test_torch_probe_cli_supports_cp1252_stdout(monkeypatch):
+    import io
+
+    from llm_benchmark import torch_probe
+
+    result = {"available": True, "reason": "CPU利用可能。CUDAは利用できません"}
+    monkeypatch.setattr(torch_probe, "probe", lambda: result)
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "stdout", stream)
+        torch_probe.main()
+        stream.flush()
+    output = raw.getvalue()
+    assert output.isascii()
+    assert json.loads(output) == result
+
+
+def test_torch_probe_cli_preserves_failure_exit(monkeypatch):
+    from llm_benchmark import torch_probe
+
+    def fail():
+        raise ImportError("fixture unavailable")
+
+    monkeypatch.setattr(torch_probe, "probe", fail)
+    with pytest.raises(SystemExit) as error:
+        torch_probe.main()
+    assert error.value.code == 1

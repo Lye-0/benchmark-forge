@@ -16,7 +16,7 @@
 
 ## 今回実行した検証
 
-- 今回のpytest: **153 passed / 2 skipped**。別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
+- 今回のpytest: **155 passed / 2 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
 - 新規検証: UTF-8分割NDJSON、可視chunkの時刻、終端欠落・過大応答・中止時のclose、モデル申告情報、GPU情報の欠落/異常、別スレッドでの逐次出力、出力中の更新に対するスナップショット整合、gzip既存ファイル保護。HTTP/機器応答はfixtureであり実モデル・GPU検証ではありません。
 - Ruff lint / format、mypy: PASS。
 - Vitest: **6 passed**。TypeScript / Vite: PASS。
@@ -57,3 +57,7 @@ Cloud内のLinux/CPU・Mock・Docker検証を実施しました。次は[Windows
 - CIをubuntu-latest / windows-latestのmatrix化。WindowsではPowerShell 5.1のsetup/checkと、start.ps1を使うE2E、CPU版Torchの実インポート診断を設定。CloudからActions API取得は403で拒否されたため、リモートCI実行結果は未確認。設定追加をWindows成功とは記載しない。
 - LinuxでWebテスト6件、E2E4件、型検査・ビルドが成功。PowerShell実行、Windows Job Objectの実動作、Windows CUDA・Docker Desktop・実モデルはWindows側での確認待ち。
 - Codexの公式プロトコルMockは維持。live認証/隔離は従来どおり未検証で無効。今回モデル回答診断は不要な変更のため実LLM呼出は行っていない。
+
+### Windows CIの文字コード修正
+
+ユーザー提供のWindows runnerログでは、任意依存のインストール後、Torch診断の`print(r)`が日本語をcp1252へ変換できず失敗しました。CIを既存の`python -m llm_benchmark.torch_probe`へ変更し、ASCIIエスケープ付きJSONで出力します。診断失敗時の終了コード1は維持します。cp1252の標準出力を使った回帰試験を追加しました。修正後のWindows CI結果は未確認です。

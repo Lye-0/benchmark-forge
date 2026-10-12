@@ -39,7 +39,7 @@ jobs:
         run: |
           uv sync --locked --extra transformers
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv run --no-sync python -c "from llm_benchmark.torch_probe import probe; r = probe(); assert r['available']; print(r)"
+          uv run --no-sync python -m llm_benchmark.torch_probe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify disposable Docker isolation
         if: runner.os == 'Linux'
