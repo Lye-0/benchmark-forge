@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
+import { ProgressWatch, type RunProgress } from './run-progress';
 
 // Capture durable state separately from the DOM, and prevent a failed test's queued
 // runs from delaying unrelated tests. This server/DB is exclusive to this suite.
@@ -7,7 +9,11 @@ test.afterEach(async ({ request }, testInfo) => {
   expect(response.ok()).toBeTruthy();
   const runs = await response.json() as { id: string; status: string; completed: number; total: number; revision: number }[];
   if (testInfo.status !== testInfo.expectedStatus) {
-    await testInfo.attach('durable-run-progress', { contentType: 'application/json', body: Buffer.from(JSON.stringify(runs.map(({ id, status, completed, total, revision }) => ({ id, status, completed, total, revision })), null, 2)) });
+    const summary = JSON.stringify(runs.map(({ id, status, completed, total, revision }) => ({ id, status, completed, total, revision })), null, 2);
+    console.log('durable-run-progress:', summary);
+    const path = testInfo.outputPath('durable-run-progress.json');
+    await writeFile(path, summary, 'utf8');
+    await testInfo.attach('durable-run-progress', { contentType: 'application/json', path });
   }
   for (const run of runs) {
     if (['queued', 'running', 'pausing', 'paused'].includes(run.status)) {
@@ -21,7 +27,8 @@ test.afterEach(async ({ request }, testInfo) => {
   }
 });
 
-test('browser configuration → frozen set → run → logs → comparison', async ({ page }) => {
+test('browser configuration → frozen set → run → logs → comparison', async ({ page, request }) => {
+  test.setTimeout(150000); // Up to 200 durable problem writes, then a separate UI deadline.
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'ベンチマークを、確かな比較へ。' })).toBeVisible();
   await page.getByRole('button', { name: '新しいベンチマーク', exact: true }).last().click();
@@ -32,12 +39,24 @@ test('browser configuration → frozen set → run → logs → comparison', asy
   await page.getByRole('button', { name: '問題セットを確定する' }).click();
   await expect(page.getByRole('heading', { name: '確定した問題セット' })).toBeVisible();
   await expect(page.getByText('100問 · 固定50 / 動的50', { exact: false })).toBeVisible();
+  const started = page.waitForResponse(r => r.url().endsWith('/api/runs') && r.request().method() === 'POST');
   await page.getByRole('button', { name: 'このセットで実行する' }).click();
+  const { run_ids: runIds } = await (await started).json() as { run_ids: string[] };
+  expect(runIds).toHaveLength(2);
   await expect(page.getByRole('heading', { name: 'Mock / 参照ソルバー' })).toBeVisible();
   await page.getByRole('button', { name: '一時停止', exact: true }).click();
   await expect(page.getByRole('button', { name: '再開', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '再開', exact: true }).click();
-  await expect(page.getByText('完了', { exact: true })).toBeVisible({ timeout: 20000 });
+  const progress = new ProgressWatch(runIds, Date.now());
+  for (;;) {
+    const response = await request.get('/api/runs', { timeout: 5000 });
+    expect(response.ok()).toBeTruthy();
+    const rows = await response.json() as RunProgress[];
+    if (progress.observe(rows, Date.now())) break;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  // Backend completion must still reach the UI promptly, without a reload.
+  await expect(page.getByText('完了', { exact: true })).toBeVisible({ timeout: 5000 });
   await page.getByRole('tab', { name: '問題別ログ' }).click();
   await expect(page.locator('details.problem-log')).toHaveCount(100);
   await page.locator('details.problem-log').first().locator('summary').first().click();
