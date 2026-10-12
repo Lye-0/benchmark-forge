@@ -21,6 +21,10 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: bash scripts/setup.sh
       - run: bash scripts/check.sh
+      - name: Verify disposable Docker isolation
+        run: |
+          docker pull python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+          FORGE_TEST_DOCKER=1 uv run pytest -q tests/test_sandbox.py
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
       - run: npm run e2e

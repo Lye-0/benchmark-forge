@@ -45,7 +45,7 @@ FORGE_WEB_PORT=5174 FORGE_API_PORT=8001 npm run dev
 
 ```bash
 uv run forge generators
-uv run forge generate --count 20 --seed 42
+uv run forge generate --count 24 --seed 42
 # generate が表示したset_idを使用
 uv run forge run SET_ID --models mock-reference,mock-wrong
 uv run forge report RUN_ID --format markdown
@@ -71,14 +71,14 @@ npm run e2e
 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run e2e
 ```
 
-E2Eは通常のデータ領域と別の一時DB・専用ポートを使用します。生成器・固定コーパスの整合、再現性、一意解、重みと分母、中断・再開、API/CLI、外部Origin拒否、Codex通信の失敗、安全側での実行停止をテストしています。実際のDocker侵入試験・GPU試験・Codex実接続試験は未実施です。GitHub Actionsの実行結果はリポジトリへpush後に確認してください。
+E2Eは通常のデータ領域と別の一時DB・専用ポートを使用します。生成器・固定コーパスの整合、再現性、一意解、重みと分母、中断・再開、API/CLI、外部Origin拒否、Codex通信の失敗、安全側での実行停止をテストしています。実Dockerの権限・ネットワーク・資源制限・削除試験は実行済みです。GPU試験・Codex実接続は未実施です。GitHub Actionsの実行結果はリポジトリへpush後に確認してください。
 
 ## データと制限
 
 - SQLiteは既定で `.benchmark-forge/forge.sqlite3` に保存。`FORGE_DATA_DIR` で変更可能。マイグレーションは自動適用。バックアップはサービス停止後にデータ領域全体をコピーします。
-- 14生成器 / 9大カテゴリ / 280件の小規模な固定コーパス。固定問題が足りない条件は失敗し、動的問題へ無断で置換しません。狭い難易度範囲には固定問題がないことがあります。
+- 24生成器 / 15大カテゴリ / 480件の小規模な固定コーパス。固定問題が足りない条件は失敗し、動的問題へ無断で置換しません。狭い難易度範囲には固定問題がないことがあります。
 - 総合値はカテゴリ均等の重み付き正答率。全割当問題を分母とし、タイムアウト・エラー・無回答も保持します。単純正答率と固定/動的の寄与も表示します。
-- 生成コードの実行、ネイティブツール、複数ターンエージェントは無効。コード読解・修正選択、テキストでのツール選択は実行を伴わず利用できます。
+- コード生成・ネイティブツール・複数ターン仮想在庫は独立評価です。コードは実行プロセスでDocker隔離の検証が通った場合のみ有効。Ollamaツール対応はモデルごとの申告と実検証が必要です。
 - 難易度は構造パラメーターの暫定値。固定コーパスの難易度は5つの保管点ですが、動的生成と設定は連続値です。カテゴリ間の同じ値が同じ難しさを意味するとは限りません。
 - RAM/VRAM/TTFTなど未測定の値はN/A。能力・速度・リソースを単一スコアに合成しません。
 - 外部データは含めていません。コードライセンスはユーザー未決定で、無断でMIT等を適用していません。
@@ -90,3 +90,34 @@ E2Eは通常のデータ領域と別の一時DB・専用ポートを使用しま
 任意依存は `uv sync --locked --extra transformers` で導入できます（Torchを含み大容量）。通常のMock/Ollama開発には不要です。Webのモデル登録でTransformersを選び、取得済みモデルのローカルディレクトリとCPU/CUDAを指定します。safetensors形式のみ対応し、ダウンロードやremote code実行はしません。量子化指定は現時点でN/Aまたはnoneに限定しています。
 
 問題ごとにモデルをロードするため、タイムアウトにはロード時間も含まれます。実行中の中止はワーカーを終了します。ロード・生成時間とメモリは問題ログ/JSONLに記録します。生成時間はprefill込みでありdecode速度ではありません。詳細な検証範囲は [STATUS](docs/STATUS.md) を参照してください。
+
+## 独立評価と履歴
+
+「プロファイル・設定」に私有holdout、速度試験、ツール/コード評価があります。通常の能力評価と合算しません。試行履歴は再試行後も保持し、旧DBはv2へ自動移行します。更新前のバックアップはサービスを停止してデータ領域をコピーしてください。
+
+```bash
+uv run forge import-holdout /path/to/private.jsonl
+uv run forge tool-set --mode agent --count 5
+uv run forge speed-probe --input-repetitions 100 --output-repetitions 32
+uv run forge code-set --count 5
+# 上記コマンドが返したSET_IDを使用
+uv run forge run SET_ID --models mock-reference
+uv run forge resume RUN_ID
+uv run forge resume RUN_ID --retry
+uv run forge report RUN_ID --format jsonl --output report.jsonl.gz --compress
+uv run forge calibration REAL_MODEL_RUN_ID --output observations.jsonl
+```
+
+モデルはWebまたは `forge model-register /path/to/model-config.json` で登録します。私有問題の形式は [HOLDOUT.md](docs/HOLDOUT.md)。校正用の出力はMock・未完了・速度/ツール/コードを拒否します。
+
+## Dockerコード採点（任意）
+
+通常のテキスト評価にはDockerは不要です。コード採点を使う環境で、次の固定イメージを一度取得します。アプリは自動pullしません。
+
+```bash
+docker pull python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+uv run forge sandbox-check
+FORGE_TEST_DOCKER=1 uv run pytest -q tests/test_sandbox.py
+```
+
+Webのコード評価は開始時に隔離検証し、CLIのコード評価も同じプロセスで検証します。Docker socketをモデル・コンテナへ渡さず、ネットワークとホストmountを禁止します。検証できない環境では無効です。詳細は [SECURITY.md](docs/SECURITY.md)。

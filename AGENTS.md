@@ -12,3 +12,5 @@
 - Use existing isolated checkouts; do not create worktrees unless the user requests one.
 - Run backend tests/lint/types and web tests/types/build before reporting completion.
 - If creating commits, use Japanese Conventional Commits. No external deployment.
+
+- Continue across phase boundaries without waiting for confirmation. Stop only for a necessary user decision/action, after completing independent work.
