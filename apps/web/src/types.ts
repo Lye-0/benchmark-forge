@@ -1,0 +1,15 @@
+export interface Generator { id: string; category_id: string; subcategory_id: string; name: string; status: string; version: string; template: string; answer_type: string; difficulty_range: number[]; }
+export interface Subcategory { id: string; name: string; generators: Generator[]; }
+export interface Category { id: string; name: string; status: string; subcategories: Subcategory[]; }
+export interface Registry { categories: Category[]; generator_count: number; covered_categories: number; total_categories: number; difficulty_calibrated: boolean; }
+export interface Config { generator_ids: string[]; count: number; seed: number; difficulty_min: number; difficulty_max: number; fixed_ratio: number; profile: string; custom: boolean; }
+export interface Preset { id: string; name: string; description: string; config: Config; }
+export interface Capabilities { available: boolean; status: string; reason: string; test_only: boolean; live_verified: boolean; execution_path: string; native_tools: boolean; }
+export interface Model { model_id: string; name: string; backend: string; model: string; endpoint: string; revision: string; quantization: string; temperature: number; max_tokens: number; timeout_seconds: number; capabilities: Capabilities; }
+export interface Group { total: number; completed: number; correct: number; accuracy: number | null; weighted_contribution: number; }
+export interface Difficulty extends Group { lower: number; upper: number; observed_wilson_95: [number, number] | null; }
+export interface Problem { problem_id: string; prompt: string; generator_id: string; category_id: string; target_difficulty: number; origin: string; answer_spec: { expected: unknown }; }
+export interface Result { index: number; problem_id: string; status: string; correct: boolean; answer: string; reason: string; latency_seconds: number; problem: Problem; }
+export interface Run { id: string; set_id: string; set_hash: string; status: string; created_at: string; model: Model; total: number; completed: number; correct: number; accuracy: number; micro_accuracy: number; completion_rate: number; by_origin: Record<string, Group>; by_category: Record<string, Group>; by_difficulty: Difficulty[]; by_format: Record<string, Group>; status_counts: Record<string, number>; latency_p50: number | null; latency_p95: number | null; answer_time_seconds: number; test_only: boolean; provisional: boolean; warnings: string[]; results?: Result[]; config?: Config; environment: Record<string, unknown>; }
+export interface Frozen { set_id: string; set_hash: string; count: number; fixed_count: number; dynamic_count: number; warnings: string[]; duplicate_stats: Record<string, number>; sample: { problem_id: string; prompt: string }[]; }
+export interface Settings { sandbox: { available: boolean; reason: string; code_execution: boolean; native_tools: boolean; multi_turn_agents: boolean }; data_directory: string; profile: string; code_license: string; paid_api_required: boolean; }
