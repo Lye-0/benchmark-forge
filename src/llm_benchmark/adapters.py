@@ -42,6 +42,22 @@ class Adapter(Protocol):
 
 def mock_solve(prompt: str) -> str:
     """Independent rule solver for software tests, not an LLM or an oracle."""
+    if prompt.startswith("コード課題: filtered-square-sum"):
+        import re
+
+        match = re.search(r"うち(-?\d+)以上", prompt)
+        if match is None:
+            raise AdapterError("コード課題の形式が不正です")
+        threshold = int(match[1])
+        return f"def solve(values):\n    total = 0\n    for value in values:\n        if value % 2 == 0 and value >= {threshold}:\n            total += value ** 2\n    return total"
+    if prompt.startswith("速度測定 "):
+        import re
+
+        match = re.search(r"xを(\d+)個", prompt)
+        if match is None:
+            raise AdapterError("速度試験の形式が不正です")
+        count = int(match[1])
+        return " ".join(["x"] * count)
     task = prompt.splitlines()[0].removeprefix("課題: ")
     data = json.loads(prompt.split("入力(JSON):\n", 1)[1].splitlines()[0])
     if task == "math.expression":
@@ -103,7 +119,9 @@ def mock_solve(prompt: str) -> str:
     elif task == "tool.select":
         answer = {"name": "inventory.lookup", "arguments": {"item_id": data["item_id"]}}
     else:
-        raise AdapterError("Mockソルバーの未対応課題です")
+        from llm_benchmark.mock_extra import solve
+
+        answer = solve(task, data)
     return canonical(answer)
 
 
@@ -176,6 +194,42 @@ class OllamaAdapter:
                     "Ollama通信・応答エラー。ローカルサービスとモデル名を確認してください"
                 ) from e
 
+    async def tool_turn(self, messages: list[dict], tools: list[dict]) -> dict:
+        async with httpx.AsyncClient(
+            timeout=self.config.timeout_seconds,
+            trust_env=False,
+            follow_redirects=False,
+            transport=self.transport,
+        ) as client:
+            try:
+                options = {
+                    "temperature": self.config.temperature,
+                    "seed": 0,
+                    "num_predict": self.config.max_tokens,
+                }
+                if self.config.context_length is not None:
+                    options["num_ctx"] = self.config.context_length
+                r = await client.post(
+                    self.endpoint + "/api/chat",
+                    json={
+                        "model": self.config.model,
+                        "messages": messages,
+                        "tools": tools,
+                        "stream": False,
+                        "options": options,
+                    },
+                )
+                r.raise_for_status()
+                message = r.json()["message"]
+                if not isinstance(message, dict) or len(canonical(message)) > 64000:
+                    raise ValueError("invalid message")
+                # Keep protocol content only, never backend metadata or unexpected fields.
+                return {key: message[key] for key in ("content", "tool_calls") if key in message}
+            except httpx.TimeoutException as exc:
+                raise TimeoutError("Ollamaツール応答タイムアウト") from exc
+            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                raise AdapterError("Ollamaのツール通信・応答エラー") from exc
+
     async def check(self) -> dict:
         async with httpx.AsyncClient(
             timeout=3, trust_env=False, transport=self.transport
@@ -199,8 +253,9 @@ class OllamaAdapter:
 def capabilities(config: ModelConfig) -> dict:
     common = {
         "text": True,
-        "native_tools": False,
-        "agent": False,
+        "native_tools": config.backend == "mock"
+        or (config.backend == "ollama" and config.native_tools),
+        "agent": config.backend == "mock" or (config.backend == "ollama" and config.native_tools),
         "images": False,
         "live_verified": False,
         "quantization": config.quantization,

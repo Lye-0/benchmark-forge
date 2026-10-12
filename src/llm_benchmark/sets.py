@@ -17,6 +17,8 @@ def fixed_catalogue() -> list[Problem]:
 
 
 def build_set(config: SetConfig) -> FrozenSet:
+    if config.evaluation_mode != "text":
+        raise SetUnavailable("独立したツール/コード評価の作成画面を使用してください")
     if config.profile.lower().startswith("standard"):
         raise SetUnavailable(
             "16分野の検証条件が未達のため正式Standardは利用できません。Previewを選んでください"
@@ -147,14 +149,14 @@ def presets() -> list[dict]:
             "id": "preview-quick-v1",
             "name": "クイック",
             "description": "少量の代表問題で動作を確認。",
-            "config": SetConfig(generator_ids=all_ids, count=20).model_dump(),
+            "config": SetConfig(generator_ids=all_ids, count=max(20, len(all_ids))).model_dump(),
         },
         {
             "id": "custom",
             "name": "カスタム",
             "description": "生成器と配分を調整。",
             "config": SetConfig(
-                generator_ids=all_ids, count=20, profile="custom", custom=True
+                generator_ids=all_ids, count=max(20, len(all_ids)), profile="custom", custom=True
             ).model_dump(),
         },
     ]

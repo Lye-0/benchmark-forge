@@ -1,0 +1,100 @@
+{
+  "purpose": "prompt-only development diagnostic, excluded from production scores",
+  "agent": "gpt-6-astra",
+  "reasoning": "medium",
+  "history": "none",
+  "tools_used": false,
+  "limitation": "shared workspace access not mechanically isolated; instructed to use no tools",
+  "results": [
+    {
+      "generator": "cs.transactions",
+      "seed": 231,
+      "difficulty": 37.5,
+      "public_problem": {
+        "problem_id": "p-d03c977650ecbde373aff7f1",
+        "prompt": "課題: cs.transactions\nトランザクションは入れ子なし。begin時点を保存、setは値を置換、commitは確定、rollbackはbegin時点に戻します。最終状態をJSONオブジェクトで答えてください。\n入力(JSON):\n{\"events\":[[\"begin\"],[\"set\",\"b\",46],[\"set\",\"a\",-24],[\"set\",\"b\",3],[\"set\",\"b\",49],[\"rollback\"],[\"begin\"],[\"set\",\"b\",-35],[\"set\",\"a\",-48],[\"set\",\"a\",48],[\"rollback\"],[\"begin\"],[\"set\",\"b\",-5],[\"set\",\"a\",-48],[\"set\",\"b\",38],[\"commit\"],[\"begin\"],[\"set\",\"a\",39],[\"set\",\"a\",37],[\"set\",\"a\",-28],[\"set\",\"b\",-4],[\"commit\"],[\"begin\"],[\"set\",\"b\",-35],[\"set\",\"b\",14],[\"rollback\"]],\"initial\":{\"a\":0,\"b\":4}}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。"
+      },
+      "response": "{\"a\":-28,\"b\":-4}",
+      "grade": {
+        "correct": true,
+        "reason": "構造化回答が一致",
+        "parsed": {
+          "a": -28,
+          "b": -4
+        }
+      }
+    },
+    {
+      "generator": "language.scope",
+      "seed": 232,
+      "difficulty": 37.5,
+      "public_problem": {
+        "problem_id": "p-5486a8cfa1fbcb8c6035c9bd",
+        "prompt": "課題: language.scope\nこの形式言語では「参加しないわけではない」は参加、「参加するわけではない」は不参加と厳密に定義します。参加する人物名だけを文字列の辞書順でJSON配列にしてください。現実の語用論上の推測はしません。\n入力(JSON):\n{\"sentences\":[\"人物4は参加するわけではない。\",\"人物5は参加するわけではない。\",\"人物0は参加するわけではない。\",\"人物3は参加しないわけではない。\",\"人物1は参加するわけではない。\",\"人物6は参加しないわけではない。\",\"人物2は参加するわけではない。\"]}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。"
+      },
+      "response": "[\"人物3\",\"人物6\"]",
+      "grade": {
+        "correct": true,
+        "reason": "構造化回答が一致",
+        "parsed": [
+          "人物3",
+          "人物6"
+        ]
+      }
+    },
+    {
+      "generator": "reading.evidence",
+      "seed": 233,
+      "difficulty": 37.5,
+      "public_problem": {
+        "problem_id": "p-0e74710d73fdca65660c1c62",
+        "prompt": "課題: reading.evidence\npersonの担当品の保管場所を記録から特定し、{\"place\":場所,\"evidence\":[人物の記録ID,品物の記録ID]}で答えてください。\n入力(JSON):\n{\"documents\":[{\"id\":\"B6\",\"text\":\"品物6の保管場所は倉庫375。\"},{\"id\":\"B5\",\"text\":\"品物5の保管場所は倉庫204。\"},{\"id\":\"B2\",\"text\":\"品物2の保管場所は倉庫309。\"},{\"id\":\"A3\",\"text\":\"人物278の担当品は品物3。\"},{\"id\":\"A0\",\"text\":\"人物798の担当品は品物0。\"},{\"id\":\"A4\",\"text\":\"人物637の担当品は品物4。\"},{\"id\":\"B7\",\"text\":\"品物7の保管場所は倉庫339。\"},{\"id\":\"B3\",\"text\":\"品物3の保管場所は倉庫185。\"},{\"id\":\"B0\",\"text\":\"品物0の保管場所は倉庫595。\"},{\"id\":\"A2\",\"text\":\"人物743の担当品は品物2。\"},{\"id\":\"A6\",\"text\":\"人物919の担当品は品物6。\"},{\"id\":\"B4\",\"text\":\"品物4の保管場所は倉庫953。\"},{\"id\":\"B1\",\"text\":\"品物1の保管場所は倉庫664。\"},{\"id\":\"A5\",\"text\":\"人物336の担当品は品物5。\"},{\"id\":\"A7\",\"text\":\"人物970の担当品は品物7。\"},{\"id\":\"A1\",\"text\":\"人物921の担当品は品物1。\"}],\"person\":\"人物798\"}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。"
+      },
+      "response": "{\"place\":\"倉庫595\",\"evidence\":[\"A0\",\"B0\"]}",
+      "grade": {
+        "correct": true,
+        "reason": "構造化回答が一致",
+        "parsed": {
+          "place": "倉庫595",
+          "evidence": [
+            "A0",
+            "B0"
+          ]
+        }
+      }
+    },
+    {
+      "generator": "planning.schedule",
+      "seed": 234,
+      "difficulty": 37.5,
+      "public_problem": {
+        "problem_id": "p-ffdc4cb09a4491d07f1110e6",
+        "prompt": "課題: planning.schedule\n作業IDはdurationsの添字。[A,B]はA完了後にB開始可能を意味します。時刻0開始、作業者は無制限、作業は中断不可。全作業の最短完了時刻を整数で答えてください。\n入力(JSON):\n{\"dependencies\":[[0,3],[0,4],[1,2],[1,5],[3,4],[3,5]],\"durations\":[11,9,2,19,14,17,16]}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。"
+      },
+      "response": "47",
+      "grade": {
+        "correct": true,
+        "reason": "許容誤差内",
+        "parsed": 47.0
+      }
+    },
+    {
+      "generator": "robust.consistency",
+      "seed": 235,
+      "difficulty": 37.5,
+      "public_problem": {
+        "problem_id": "p-2509c39583c08874b7b933fa",
+        "prompt": "課題: robust.consistency\n未知整数xは0以上upper_inclusive以下。observationsの [法,余り] を全て満たすxについて、解なしはinconsistent、一意ならunique、複数ならinsufficient。{\"status\":分類,\"value\":一意解またはnull}で答えてください。\n入力(JSON):\n{\"observations\":[[2,1],[5,1],[2,0]],\"upper_inclusive\":28}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。"
+      },
+      "response": "{\"status\":\"inconsistent\",\"value\":null}",
+      "grade": {
+        "correct": true,
+        "reason": "構造化回答が一致",
+        "parsed": {
+          "status": "inconsistent",
+          "value": null
+        }
+      }
+    }
+  ]
+}

@@ -20,7 +20,7 @@ def client(tmp_path):
 
 
 def config():
-    return {"generator_ids": list(REGISTRY), "count": 20, "seed": 41, "fixed_ratio": 0.5}
+    return {"generator_ids": list(REGISTRY)[:14], "count": 20, "seed": 41, "fixed_ratio": 0.5}
 
 
 def finish(client, id):
@@ -117,7 +117,7 @@ def test_user_preset_persistence_and_migration(client):
     db = client.app.state.store
     db.migrate()
     with db.connection() as con:
-        assert con.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert con.execute("PRAGMA user_version").fetchone()[0] == 2
     assert len(db.presets()) == 1
 
 
@@ -156,3 +156,15 @@ def test_csv_formula_sanitization():
     }
     csv, _ = export_report(report, "csv")
     assert "'=HYPERLINK" in csv
+
+
+def test_cli_private_and_independent_sets(tmp_path, monkeypatch):
+    monkeypatch.setenv("FORGE_DATA_DIR", str(tmp_path / "cli"))
+    runner = CliRunner()
+    for args in [["speed-probe"], ["tool-set", "--mode", "agent"], ["code-set"]]:
+        result = runner.invoke(cli, args)
+        assert result.exit_code == 0, result.output
+        assert "set-" in result.output
+    model = tmp_path / "model.json"
+    model.write_text(json.dumps({"model_id": "cli-model", "name": "CLI", "backend": "mock"}))
+    assert runner.invoke(cli, ["model-register", str(model)]).exit_code == 0

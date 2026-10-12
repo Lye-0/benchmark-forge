@@ -1,0 +1,26 @@
+import { useState } from 'react';
+import { api } from './api';
+import type { Model } from './types';
+
+export function ToolBenchmarks({ models, onCreated, onError }: { models: Model[]; onCreated: (id: string) => void; onError: (message: string) => void }) {
+  const [mode, setMode] = useState('native-tools');
+  const [model, setModel] = useState('mock-reference');
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const start = async () => {
+    setBusy(true); setStatus('');
+    try {
+      if (mode === 'code') {
+        setStatus('隔離・資源制限を実検証しています…');
+        const result = await api<{ available: boolean; reason: string }>('/sandbox/check', {});
+        setStatus(result.reason);
+        if (!result.available) return;
+      }
+      const frozen = await api<{ set_id: string }>(mode === 'code' ? '/code-sets' : '/tool-sets', { ...(mode === 'code' ? {} : { mode }), count: 5, seed: 42 });
+      const result = await api<{ run_ids: string[] }>('/runs', { set_id: frozen.set_id, model_ids: [model] });
+      onCreated(result.run_ids[0]);
+    } catch (e) { onError((e as Error).message); }
+    finally { setBusy(false); }
+  };
+  return <section className="panel"><h2>ツール・コードの独立評価</h2><p>テキスト型ツール選択とは別の評価です。仮想在庫は問題ごとにリセットし、外部サービスや実データを操作しません。コードは隔離検証が通ったDocker内だけで実行します。</p><div className="form-grid"><label className="field">独立評価モード<select value={mode} onChange={e => setMode(e.target.value)}><option value="native-tools">ネイティブツール呼出</option><option value="agent">複数ターンの仮想在庫</option><option value="code">Pythonコード生成・隔離採点</option></select></label><label className="field">独立評価モデル<select value={model} onChange={e => setModel(e.target.value)}>{models.map(m => <option key={m.model_id} value={m.model_id} disabled={!m.capabilities.available || (mode !== 'code' && !m.capabilities.native_tools)}>{m.name}</option>)}</select></label></div><button className="secondary" disabled={busy} onClick={() => void start()}>独立評価を開始（5問）</button>{status && <p role="status">{status}</p>}</section>;
+}

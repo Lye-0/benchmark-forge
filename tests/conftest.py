@@ -13,6 +13,6 @@ def store(tmp_path):
 
 @pytest.fixture
 def frozen(store):
-    frozen = build_set(SetConfig(generator_ids=list(REGISTRY), count=20))
+    frozen = build_set(SetConfig(generator_ids=list(REGISTRY)[:14], count=20))
     store.save_set(frozen)
     return frozen

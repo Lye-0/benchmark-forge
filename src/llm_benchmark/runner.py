@@ -6,6 +6,7 @@ from contextlib import suppress
 from typing import Literal, TextIO
 
 from llm_benchmark.adapters import AdapterError, capabilities, make_adapter
+from llm_benchmark.analysis import difficulty_estimate, resource_summary
 from llm_benchmark.domain import ModelConfig, Result
 from llm_benchmark.grading import grade
 from llm_benchmark.storage import Store
@@ -83,6 +84,7 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
     report = {
         **{k: v for k, v in run.items() if k != "results"},
         "set_hash": frozen.set_hash,
+        "set_metadata": frozen.metadata,
         "profile_version": frozen.profile_version,
         "grader_version": frozen.grader_version,
         "total": total,
@@ -97,6 +99,17 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
         "by_difficulty": by_difficulty,
         "by_format": by_format,
         "by_tag": by_tag,
+        "difficulty_80": difficulty_estimate(
+            by_difficulty,
+            eligible=run["status"] == "completed"
+            and run["model"]["backend"] != "mock"
+            and frozen.profile_version != "Speed probe v1"
+            and frozen.config.evaluation_mode == "text",
+        ),
+        "resources": resource_summary(results),
+        "measurement_kind": "speed"
+        if frozen.profile_version == "Speed probe v1"
+        else frozen.config.evaluation_mode,
         "latency_p50": percentile(latencies, 0.5),
         "latency_p95": percentile(latencies, 0.95),
         "answer_time_seconds": sum(latencies),
@@ -106,6 +119,7 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
         "capabilities": capabilities(ModelConfig.model_validate(run["model"])),
     }
     if detail:
+        report["attempts"] = store.attempts(id)
         report["results"] = [
             {**r.model_dump(), "problem": frozen.problems[r.index].model_dump()} for r in results
         ]
@@ -119,6 +133,7 @@ def comparison(reports: list[dict]) -> dict:
     comparable = (
         len({r["set_hash"] for r in reports}) <= 1
         and len({r["grader_version"] for r in reports}) <= 1
+        and len({r.get("measurement_kind", "ability") for r in reports}) <= 1
     )
     if not comparable:
         warnings.append("問題セットまたは採点器が異なるため、能力スコアを直接比較できません。")
@@ -131,7 +146,13 @@ def comparison(reports: list[dict]) -> dict:
     if (
         len(
             {
-                (r["model"]["temperature"], r["model"]["max_tokens"], r["model"]["timeout_seconds"])
+                (
+                    r["model"]["temperature"],
+                    r["model"]["max_tokens"],
+                    r["model"]["timeout_seconds"],
+                    r["model"].get("context_length"),
+                    r["model"].get("device"),
+                )
                 for r in reports
             }
         )
@@ -148,6 +169,9 @@ class Scheduler:
         self.task: asyncio.Task | None = None
         self.lock: TextIO | None = None
         self.active: tuple[str, asyncio.Task] | None = None
+        from llm_benchmark.sandbox import DockerSandbox
+
+        self.sandbox = DockerSandbox()
 
     def start(self):
         self.lock = (self.store.path.parent / "runner.lock").open("a")
@@ -174,11 +198,20 @@ class Scheduler:
             self.lock = None
 
     def create(self, set_id: str, models: list[str]) -> list[str]:
-        self.store.get_set(set_id)
+        frozen = self.store.get_set(set_id)
         if len(models) != len(set(models)):
             raise ValueError("モデルの重複選択はできません")
+        if frozen.config.evaluation_mode == "code" and not self.sandbox.verified:
+            raise AdapterError("コード評価の前に隔離検証を実行してください")
         configs = [self.store.get_model(id) for id in models]
         for config in configs:
+            if (
+                frozen.config.evaluation_mode in {"native-tools", "agent"}
+                and not capabilities(config)["native_tools"]
+            ):
+                raise AdapterError(
+                    "選択したモデルはネイティブツールに未対応です。通常の誤答には計上しません"
+                )
             make_adapter(config)  # Preflight all before creating any jobs.
         ids = [self.store.create_run(set_id, config) for config in configs]
         for id in ids:
@@ -199,7 +232,6 @@ class Scheduler:
             self.queue.put_nowait(id)
         elif action == "retry" and status in {"completed", "paused"}:
             self.store.retry_failed(id)
-            self.store.status(id, "queued")
             self.queue.put_nowait(id)
         else:
             raise ValueError(f"{status} のランには {action} を実行できません")
@@ -226,7 +258,7 @@ class Scheduler:
         adapter = make_adapter(config)
         done = {r.index for r in run["results"]}
         for index, problem in enumerate(frozen.problems):
-            status = self.store.run(id)["status"]
+            status = self.store.run_status(id)
             if status == "pausing":
                 self.store.status(id, "paused")
                 return
@@ -234,6 +266,7 @@ class Scheduler:
                 return
             if index in done:
                 continue
+            attempt = self.store.begin_attempt(id, index)
             start = time.perf_counter()
             answer, reason, correct = "", "", False
             outcome: Literal["correct", "incorrect", "timeout", "error", "empty", "ungradable"] = (
@@ -242,7 +275,14 @@ class Scheduler:
             tokens = speed = ttft = None
             metrics = {}
             try:
-                pending = asyncio.create_task(adapter.complete(problem.public()))
+                from llm_benchmark.tool_eval import evaluate_tools
+
+                operation = (
+                    evaluate_tools(config, problem, frozen.config.evaluation_mode)
+                    if frozen.config.evaluation_mode in {"native-tools", "agent"}
+                    else adapter.complete(problem.public())
+                )
+                pending = asyncio.create_task(operation)
                 self.active = (id, pending)
                 try:
                     response = await asyncio.wait_for(pending, timeout=config.timeout_seconds)
@@ -254,7 +294,28 @@ class Scheduler:
                 ttft = response.ttft_seconds
                 if tokens is not None and response.decode_seconds and response.decode_seconds > 0:
                     speed = tokens / response.decode_seconds
-                if not answer.strip() and problem.answer_spec.expected != "":
+                if frozen.config.evaluation_mode == "code":
+                    from llm_benchmark.code_eval import harness
+
+                    code_task = asyncio.create_task(
+                        self.sandbox.execute(harness(answer, problem.simulation["cases"]))
+                    )
+                    self.active = (id, code_task)
+                    try:
+                        code_result = await code_task
+                    finally:
+                        self.active = None
+                    metrics.update(
+                        sandbox_status=code_result.status, sandbox_exit_code=code_result.exit_code
+                    )
+                    if code_result.status == "ok":
+                        graded = grade(code_result.stdout.strip(), problem.answer_spec)
+                        correct, reason = graded.correct, graded.reason
+                        outcome = "correct" if correct else "incorrect"
+                    else:
+                        outcome = "timeout" if code_result.status == "timeout" else "error"
+                        reason = "隔離コード実行: " + code_result.status
+                elif not answer.strip() and problem.answer_spec.expected != "":
                     outcome, reason = "empty", "無回答"
                 else:
                     result = grade(answer, problem.answer_spec)
@@ -262,9 +323,13 @@ class Scheduler:
                     outcome = "correct" if correct else "incorrect"
             except asyncio.CancelledError:
                 # A user cancellation stops this request, not the scheduler or the next run.
+                self.store.end_attempt(
+                    attempt,
+                    "cancelled" if self.store.run_status(id) == "cancelled" else "interrupted",
+                )
                 current = asyncio.current_task()
                 if (
-                    self.store.run(id)["status"] == "cancelled"
+                    self.store.run_status(id) == "cancelled"
                     and current
                     and not current.cancelling()
                 ):
@@ -277,7 +342,8 @@ class Scheduler:
             except Exception:
                 reason = "モデル応答処理に失敗しました（詳細は秘密情報保護のため非表示）"
             # A cancellation during an in-flight request must not write a late answer.
-            if self.store.run(id)["status"] == "cancelled":
+            if self.store.run_status(id) == "cancelled":
+                self.store.end_attempt(attempt, "cancelled")
                 return
             self.store.save_result(
                 id,
@@ -294,7 +360,8 @@ class Scheduler:
                     ttft_seconds=ttft,
                     metrics=metrics,
                 ),
+                attempt=attempt,
             )
-        status = self.store.run(id)["status"]
+        status = self.store.run_status(id)
         if status in {"running", "pausing"}:
             self.store.status(id, "completed")

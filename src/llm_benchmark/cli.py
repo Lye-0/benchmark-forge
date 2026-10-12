@@ -27,7 +27,7 @@ def generators():
 
 @app.command()
 def generate(
-    count: int = 20,
+    count: int = 24,
     seed: int = 42,
     fixed_ratio: float = 0.5,
     difficulty_min: float = 0,
@@ -77,6 +77,8 @@ def run(set_id: str, models: str = "mock-reference"):
         scheduler = Scheduler(db)
         scheduler.start()
         try:
+            if db.get_set(set_id).config.evaluation_mode == "code":
+                await scheduler.sandbox.verify()
             ids = scheduler.create(set_id, models.split(","))
             await scheduler.queue.join()
             for id in ids:
@@ -92,12 +94,20 @@ def run(set_id: str, models: str = "mock-reference"):
 
 
 @app.command()
-def report(run_id: str, format: str = "markdown", output: Path | None = None):
+def report(
+    run_id: str, format: str = "markdown", output: Path | None = None, compress: bool = False
+):
     """CSV/JSONL/Markdownを出力。既存ファイルは上書きしない。"""
     try:
         content, _ = export_report(summarize(store(), run_id), format)
+        if compress and not output:
+            raise ValueError("圧縮時は--outputを指定してください")
         if output:
-            with output.open("x") as file:
+            import gzip
+
+            with (
+                gzip.open(output, "xt", encoding="utf-8") if compress else output.open("x") as file
+            ):
                 file.write(content)
         else:
             typer.echo(content)
@@ -116,6 +126,140 @@ def serve(port: int = int(os.environ.get("FORGE_API_PORT", "8000"))):
     if not 1 <= port <= 65535:
         raise typer.BadParameter("ポートは1〜65535です")
     uvicorn.run(create_app(), host="127.0.0.1", port=port)
+
+
+@app.command("tool-set")
+def tool_set(mode: str = "native-tools", count: int = 5, seed: int = 42):
+    """native-tools / agentの独立セットを作成。"""
+    from llm_benchmark.tool_eval import ToolConfig, build_tool_set
+
+    frozen = build_tool_set(ToolConfig.model_validate({"mode": mode, "count": count, "seed": seed}))
+    store().save_set(frozen)
+    typer.echo(frozen.set_id)
+
+
+@app.command("code-set")
+def code_set(count: int = 5, seed: int = 42):
+    """隔離採点用のコード生成セットを作成。"""
+    from llm_benchmark.code_eval import CodeConfig, build_code_set
+
+    frozen = build_code_set(CodeConfig(count=count, seed=seed))
+    store().save_set(frozen)
+    typer.echo(frozen.set_id)
+
+
+@app.command("model-register")
+def model_register(path: Path):
+    """ローカルJSON設定からモデルを登録。認証情報は含めない。"""
+    from llm_benchmark.adapters import validate_endpoint
+    from llm_benchmark.domain import ModelConfig
+
+    try:
+        with path.open("rb") as file:
+            model = ModelConfig.model_validate_json(file.read(10001))
+        validate_endpoint(model.endpoint)
+        store().save_model(model)
+        typer.echo(model.model_id)
+    except (OSError, ValueError):
+        typer.echo("モデル設定を読み込めません（内容は非表示）", err=True)
+        raise typer.Exit(1) from None
+
+
+@app.command("resume")
+def resume(run_id: str, retry: bool = False):
+    """停止したランを再開。--retryは失敗のみ再試行し過去の試行を保持。"""
+
+    async def execute():
+        db = store()
+        scheduler = Scheduler(db)
+        scheduler.start()
+        try:
+            saved = db.run(run_id)
+            if db.get_set(saved["set_id"]).config.evaluation_mode == "code":
+                check = await scheduler.sandbox.verify()
+                if not check["available"]:
+                    raise RuntimeError(check["reason"])
+            scheduler.control(run_id, "retry" if retry else "resume")
+            await scheduler.queue.join()
+            typer.echo(json.dumps(summarize(db, run_id, detail=False), ensure_ascii=False))
+        finally:
+            await scheduler.close()
+
+    try:
+        asyncio.run(execute())
+    except (ValueError, KeyError, RuntimeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+
+@app.command("calibration")
+def calibration(run_id: str, output: Path):
+    """実モデルの観測を校正用JSONLへ出力。Mock・未完了ランは拒否。"""
+    from llm_benchmark.analysis import calibration_rows
+
+    try:
+        rows = calibration_rows(summarize(store(), run_id))
+        with output.open("x") as file:
+            for row in rows:
+                file.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except (ValueError, KeyError, OSError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+
+@app.command("speed-probe")
+def speed_probe(input_repetitions: int = 100, output_repetitions: int = 32, repetitions: int = 3):
+    """能力評価と区別した速度試験セットを確定。forge runで評価可能。"""
+    from llm_benchmark.speed_probe import SpeedConfig, build_speed_probe
+
+    frozen = build_speed_probe(
+        SpeedConfig(
+            input_repetitions=input_repetitions,
+            output_repetitions=output_repetitions,
+            repetitions=repetitions,
+        )
+    )
+    store().save_set(frozen)
+    typer.echo(
+        json.dumps({"set_id": frozen.set_id, "warnings": frozen.warnings}, ensure_ascii=False)
+    )
+
+
+@app.command("sandbox-check")
+def sandbox_check():
+    """固定Dockerイメージ上で通信・権限・資源制限を実検証（自動pullなし）。"""
+    from llm_benchmark.sandbox import DockerSandbox
+
+    result = asyncio.run(DockerSandbox().verify())
+    typer.echo(json.dumps(result, ensure_ascii=False))
+    if not result["available"]:
+        raise typer.Exit(1)
+
+
+@app.command("import-holdout")
+def holdout_import(path: Path):
+    """私有JSONLを検証しローカルDBに確定保存。外部送信なし。"""
+    from llm_benchmark.holdout import import_holdout
+
+    try:
+        with path.open("rb") as file:
+            data = file.read(900_001)
+        frozen = import_holdout(data.decode("utf-8"))
+        store().save_set(frozen)
+        typer.echo(
+            json.dumps(
+                {
+                    "set_id": frozen.set_id,
+                    "set_hash": frozen.set_hash,
+                    "count": len(frozen.problems),
+                }
+            )
+        )
+    except (ValueError, OSError):
+        typer.echo(
+            "取り込みに失敗しました。JSONL形式・サイズ・読取権限を確認してください", err=True
+        )
+        raise typer.Exit(1) from None
 
 
 if __name__ == "__main__":

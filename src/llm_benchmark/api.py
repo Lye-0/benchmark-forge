@@ -7,19 +7,27 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import Field
 
 from llm_benchmark.adapters import AdapterError, OllamaAdapter, capabilities, validate_endpoint
+from llm_benchmark.code_eval import CodeConfig, build_code_set
 from llm_benchmark.domain import ModelConfig, SetConfig, StartRun, StrictModel
 from llm_benchmark.generators import REGISTRY, registry_tree
 from llm_benchmark.reports import export_report
 from llm_benchmark.runner import Scheduler, comparison, summarize
 from llm_benchmark.sandbox import sandbox_status
 from llm_benchmark.sets import build_set, presets
+from llm_benchmark.speed_probe import SpeedConfig, build_speed_probe
 from llm_benchmark.storage import Store
+from llm_benchmark.tool_eval import ToolConfig, build_tool_set
+
+
+class HoldoutUpload(StrictModel):
+    jsonl: str = Field(max_length=900_000)
 
 
 class SavePreset(StrictModel):
@@ -74,8 +82,16 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                 size = int(request.headers.get("content-length", "0"))
             except ValueError:
                 return JSONResponse({"detail": "Content-Lengthが不正です"}, status_code=400)
-            if size > 1_000_000 or len(await request.body()) > 1_000_000:
+            if size > 1_000_000:
                 return JSONResponse({"detail": "リクエストが大きすぎます"}, status_code=413)
+            chunks = []
+            observed = 0
+            async for chunk in request.stream():
+                observed += len(chunk)
+                if observed > 1_000_000:
+                    return JSONResponse({"detail": "リクエストが大きすぎます"}, status_code=413)
+                chunks.append(chunk)
+            request._body = b"".join(chunks)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -84,6 +100,12 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
         )
         return response
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_shape(request: Request, exc: RequestValidationError):
+        return JSONResponse(
+            {"detail": "入力形式または値が不正です（入力内容は非表示）"}, status_code=422
+        )
 
     @app.exception_handler(KeyError)
     async def not_found(request: Request, exc: KeyError):
@@ -114,7 +136,12 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     @app.get("/api/settings")
     def settings():
         return {
-            "sandbox": sandbox_status(),
+            "sandbox": {
+                **sandbox_status(),
+                "available": scheduler.sandbox.verified,
+                "code_execution": scheduler.sandbox.verified,
+                "reason": scheduler.sandbox.reason,
+            },
             "data_directory": str(store.path.parent),
             "profile": "Preview v1",
             "code_license": "未決定",
@@ -163,6 +190,47 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             "warnings": frozen.warnings,
             "duplicate_stats": frozen.duplicate_stats,
             "sample": [p.public().model_dump() for p in frozen.problems[:2]],
+        }
+
+    @app.post("/api/sandbox/check")
+    async def check_sandbox():
+        return await scheduler.sandbox.verify()
+
+    @app.post("/api/code-sets")
+    def code_set(config: CodeConfig):
+        frozen = build_code_set(config)
+        store.save_set(frozen)
+        return {"set_id": frozen.set_id, "set_hash": frozen.set_hash, "warnings": frozen.warnings}
+
+    @app.post("/api/tool-sets")
+    def tool_set(config: ToolConfig):
+        frozen = build_tool_set(config)
+        store.save_set(frozen)
+        return {"set_id": frozen.set_id, "set_hash": frozen.set_hash, "warnings": frozen.warnings}
+
+    @app.post("/api/speed-probes")
+    def speed_probe(config: SpeedConfig):
+        frozen = build_speed_probe(config)
+        store.save_set(frozen)
+        return {"set_id": frozen.set_id, "set_hash": frozen.set_hash, "warnings": frozen.warnings}
+
+    @app.get("/api/runs/{run_id}/calibration")
+    def calibration(run_id: str):
+        from llm_benchmark.analysis import calibration_rows
+
+        return calibration_rows(summarize(store, run_id))
+
+    @app.post("/api/holdouts")
+    def holdout(value: HoldoutUpload):
+        from llm_benchmark.holdout import import_holdout
+
+        frozen = import_holdout(value.jsonl)
+        store.save_set(frozen)
+        return {
+            "set_id": frozen.set_id,
+            "set_hash": frozen.set_hash,
+            "count": len(frozen.problems),
+            "warnings": frozen.warnings,
         }
 
     @app.get("/api/sets/{set_id}")

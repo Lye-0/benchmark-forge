@@ -24,7 +24,7 @@ def test_reproducibility_reference_and_public_boundary(generator):
 
 def test_fixed_catalogue_integrity_and_reference():
     fixed = fixed_catalogue()
-    assert len(fixed) == 280
+    assert len(fixed) == 480
     for p in fixed:
         g = REGISTRY[p.generator_id]
         assert p == g.generate(p.seed, p.target_difficulty, "fixed")
@@ -74,7 +74,7 @@ def test_frozen_set_is_reproducible_balanced_and_deduplicated():
     for category in {p.category_id for p in a.problems}:
         assert sum(
             a.weights[p.problem_id] for p in a.problems if p.category_id == category
-        ) == pytest.approx(1 / 9)
+        ) == pytest.approx(1 / len({g.category_id for g in REGISTRY.values()}))
     assert a.set_hash != build_set(config.model_copy(update={"seed": 99})).set_hash
 
 
@@ -97,11 +97,11 @@ def test_registry_and_preview_presets():
     tree = registry_tree()
     assert len(tree) == 16
     assert sum(len(s["generators"]) for c in tree for s in c["subcategories"]) == len(REGISTRY)
-    assert tree[4]["status"] == "unavailable"
+    assert tree[11]["status"] == "unavailable"
     for preset in presets():
         assert build_set(SetConfig.model_validate(preset["config"])).profile_version == "Preview v1"
     with pytest.raises(SetUnavailable, match="Standard"):
-        build_set(SetConfig(generator_ids=list(REGISTRY), profile="Standard v1"))
+        build_set(SetConfig(generator_ids=list(REGISTRY), count=24, profile="Standard v1"))
 
 
 @pytest.mark.parametrize(

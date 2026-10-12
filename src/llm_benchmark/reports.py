@@ -5,10 +5,14 @@ import json
 
 def export_report(report: dict, format: str) -> tuple[str, str]:
     if format == "jsonl":
-        header = {k: v for k, v in report.items() if k != "results"}
+        header = {k: v for k, v in report.items() if k not in {"results", "attempts"}}
         lines = [json.dumps({"type": "run", **header}, ensure_ascii=False)]
         lines.extend(
             json.dumps({"type": "result", **r}, ensure_ascii=False) for r in report["results"]
+        )
+        lines.extend(
+            json.dumps({"type": "attempt", **a}, ensure_ascii=False)
+            for a in report.get("attempts", [])
         )
         return "\n".join(lines) + "\n", "application/x-ndjson"
     if format == "csv":
@@ -22,6 +26,7 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
             "answer",
             "reason",
             "latency_seconds",
+            "metrics",
         ]
         writer = csv.DictWriter(output, fieldnames=fields)
         writer.writeheader()
@@ -32,6 +37,7 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
                     k: result[k]
                     for k in ["problem_id", "status", "answer", "reason", "latency_seconds"]
                 },
+                "metrics": json.dumps(result.get("metrics", {}), ensure_ascii=False),
                 "category_id": problem["category_id"],
                 "origin": problem["origin"],
                 "difficulty": problem["target_difficulty"],

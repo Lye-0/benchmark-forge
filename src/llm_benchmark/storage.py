@@ -50,7 +50,7 @@ class Store:
         with self.connection() as con:
             con.execute("PRAGMA journal_mode=WAL")
             version = con.execute("PRAGMA user_version").fetchone()[0]
-            if version > 1:
+            if version > 2:
                 raise RuntimeError("未対応のDB版です。新しいアプリで開いてください")
             if version == 0:
                 con.executescript("""
@@ -63,6 +63,17 @@ class Store:
                         data TEXT NOT NULL, PRIMARY KEY(run_id,idx));
                     CREATE TABLE presets(id TEXT PRIMARY KEY, name TEXT NOT NULL, data TEXT NOT NULL);
                     PRAGMA user_version=1;
+                """)
+            if version < 2:
+                con.executescript("""
+                    CREATE TABLE attempts(id INTEGER PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id),
+                        idx INTEGER NOT NULL, ordinal INTEGER NOT NULL, status TEXT NOT NULL,
+                        started_at TEXT, finished_at TEXT, data TEXT,
+                        UNIQUE(run_id,idx,ordinal));
+                    CREATE INDEX attempts_run ON attempts(run_id,idx);
+                    INSERT INTO attempts(run_id,idx,ordinal,status,data)
+                        SELECT run_id,idx,1,json_extract(data,'$.status'),data FROM results;
+                    PRAGMA user_version=2;
                 """)
             for model in DEFAULT_MODELS:
                 con.execute(
@@ -178,16 +189,75 @@ class Store:
     def recover(self):
         with self.connection() as con:
             con.execute(
+                "UPDATE attempts SET status='interrupted',finished_at=? WHERE status='running'",
+                (now(),),
+            )
+            con.execute(
                 "UPDATE runs SET status='paused', updated_at=?, revision=revision+1 WHERE status IN ('queued','running','pausing')",
                 (now(),),
             )
 
-    def save_result(self, id: str, value: Result):
+    def run_status(self, id: str) -> str:
+        with self.connection() as con:
+            row = con.execute("SELECT status FROM runs WHERE id=?", (id,)).fetchone()
+            if row is None:
+                raise KeyError("ランが見つかりません")
+            return row[0]
+
+    def begin_attempt(self, id: str, index: int) -> int:
+        with self.connection() as con:
+            con.execute("BEGIN IMMEDIATE")
+            ordinal = con.execute(
+                "SELECT coalesce(max(ordinal),0)+1 FROM attempts WHERE run_id=? AND idx=?",
+                (id, index),
+            ).fetchone()[0]
+            cursor = con.execute(
+                "INSERT INTO attempts(run_id,idx,ordinal,status,started_at) VALUES(?,?,?,'running',?)",
+                (id, index, ordinal, now()),
+            )
+            return int(cursor.lastrowid)
+
+    def end_attempt(self, attempt: int, status: str):
         with self.connection() as con:
             con.execute(
+                "UPDATE attempts SET status=?,finished_at=? WHERE id=? AND status='running'",
+                (status, now(), attempt),
+            )
+
+    def attempts(self, id: str) -> list[dict]:
+        with self.connection() as con:
+            return [
+                {**dict(row), "data": json.loads(row["data"]) if row["data"] else None}
+                for row in con.execute(
+                    "SELECT * FROM attempts WHERE run_id=? ORDER BY idx,ordinal", (id,)
+                )
+            ]
+
+    def save_result(self, id: str, value: Result, attempt: int | None = None):
+        with self.connection() as con:
+            con.execute("BEGIN IMMEDIATE")
+            inserted = con.execute(
                 "INSERT OR IGNORE INTO results VALUES(?,?,?)",
                 (id, value.index, value.model_dump_json()),
-            )
+            ).rowcount
+            if not inserted:
+                return
+            if attempt is None:
+                ordinal = con.execute(
+                    "SELECT coalesce(max(ordinal),0)+1 FROM attempts WHERE run_id=? AND idx=?",
+                    (id, value.index),
+                ).fetchone()[0]
+                con.execute(
+                    "INSERT INTO attempts(run_id,idx,ordinal,status,finished_at,data) VALUES(?,?,?,?,?,?)",
+                    (id, value.index, ordinal, value.status, now(), value.model_dump_json()),
+                )
+            else:
+                updated = con.execute(
+                    "UPDATE attempts SET status=?,finished_at=?,data=? WHERE id=? AND run_id=? AND idx=? AND status='running'",
+                    (value.status, now(), value.model_dump_json(), attempt, id, value.index),
+                ).rowcount
+                if not updated:
+                    raise ValueError("試行と結果の対応が不正です")
             con.execute("UPDATE runs SET updated_at=?, revision=revision+1 WHERE id=?", (now(), id))
 
     def retry_failed(self, id: str):
@@ -195,6 +265,11 @@ class Store:
             con.execute(
                 "DELETE FROM results WHERE run_id=? AND json_extract(data,'$.status') IN ('error','timeout')",
                 (id,),
+            )
+
+            con.execute(
+                "UPDATE runs SET status='queued',updated_at=?,revision=revision+1 WHERE id=?",
+                (now(), id),
             )
 
     def save_preset(self, name: str, config: dict) -> str:

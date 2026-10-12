@@ -65,6 +65,7 @@ class Generator:
     ) -> Problem:
         if not 0 <= difficulty <= 100 or origin not in ("fixed", "dynamic"):
             raise ValueError("生成パラメーターが範囲外です")
+        difficulty = float(difficulty)
         payload, expected, instruction, features = self.build(random.Random(seed), difficulty)
         prompt = (
             f"課題: {self.id}\n{instruction}\n入力(JSON):\n{canonical(payload)}\n"
@@ -373,3 +374,8 @@ def registry_tree() -> list[dict[str, Any]]:
             }
         )
     return tree
+
+
+from llm_benchmark.generators_extra import register_extra  # noqa: E402
+
+register_extra(register, size)

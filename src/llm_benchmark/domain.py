@@ -50,6 +50,7 @@ class Problem(StrictModel):
     representation: str = "text+json"
     features: dict[str, Any]
     provenance: str = "algorithmic-original"
+    simulation: dict[str, Any] = Field(default_factory=dict)
     content_hash: str
 
     def public(self) -> PublicProblem:
@@ -65,6 +66,7 @@ class SetConfig(StrictModel):
     fixed_ratio: float = Field(default=0.5, ge=0, le=1)
     profile: str = Field(default="preview-quick-v1", max_length=100)
     custom: bool = False
+    evaluation_mode: Literal["text", "native-tools", "agent", "code"] = "text"
 
     @model_validator(mode="after")
     def valid_range(self) -> "SetConfig":
@@ -88,6 +90,7 @@ class FrozenSet(StrictModel):
     warnings: list[str]
     duplicate_stats: dict[str, int]
     created_at: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ModelConfig(StrictModel):
@@ -99,6 +102,7 @@ class ModelConfig(StrictModel):
     revision: str = Field(default="unrecorded", max_length=200)
     quantization: str = Field(default="N/A", max_length=80)
     context_length: int | None = Field(default=None, ge=1, le=10_000_000)
+    native_tools: bool = False
     device: Literal["cpu", "cuda"] = "cpu"
     temperature: float = Field(default=0, ge=0, le=2)
     max_tokens: int = Field(default=512, ge=1, le=32768)
