@@ -16,7 +16,7 @@
 
 ## 今回実行した検証
 
-- 今回のpytest: **195 passed / 3 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
+- 今回のpytest: **195 passed / 6 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
 - 新規検証: UTF-8分割NDJSON、可視chunkの時刻、終端欠落・過大応答・中止時のclose、モデル申告情報、GPU情報の欠落/異常、別スレッドでの逐次出力、出力中の更新に対するスナップショット整合、gzip既存ファイル保護。HTTP/機器応答はfixtureであり実モデル・GPU検証ではありません。
 - Ruff lint / format、mypy: PASS。
 - Vitest: **16 passed**。TypeScript / Vite: PASS。
@@ -133,3 +133,11 @@ Cloud/LinuxでPython191件成功・実Docker3件skip、別途実Docker21件と�
 履歴APIで結果を二重に読み込んでいた経路を修正。SSEは軽量なrevision照会後、変更があるときだけ詳細集計し、同期DB読み込み/集計をイベントループ外で行います。初回/再接続時の最新状態再送と終端イベントは維持。ランのrevisionと結果は1つのSQLite読取スナップショットで取得します。無変更時の再集計抑止、ワーカースレッドでの実行、終端配信、履歴の1回読取をテストしました。
 
 Cloud/LinuxでPython195件成功・実Docker3件skip、Web16件、E2E4件、Ruff・mypy・TypeScript・Vite成功。今回の変更後のWindows実行は未確認です。隔離実装は変更していません。
+
+### Docker未導入時のPowerShell診断（2026-10-13）
+
+ユーザーのWindows実機で`not_installed`を確認。Docker未導入としてコード評価だけを無効にする想定どおりの動作で、Ollama通常評価への影響はありません。PowerShellラッパーが想定内の終了コード1を汎用例外として表示していたため、構造化結果が`available: false`の場合だけ通常評価を継続できる案内に変更しました。終了コード1は維持し、不正JSONやその他の失敗は例外として扱います。グローバルなInvoke-Checkedの失敗検出は変更していません。
+
+Windows PowerShellを実際に起動する回帰試験を追加。uvの応答だけをfixture化して、未導入/検証成功/壊れた応答の終了コード、stderr、作業ディレクトリ復元を確認する構成です。Cloud/Linuxではこの3件をskipし、既存Windows CIで実行します。Docker導入は生成コード評価を利用する段階まで不要です。
+
+Cloud/LinuxでPython195件成功・6件skip（実Docker3件、Windows PowerShell3件）、Web16件、Ruff・mypy・TypeScript・Vite成功。PowerShell変更の実行検証はWindows CI待ちです。
