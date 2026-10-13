@@ -33,6 +33,10 @@ jobs:
       - if: runner.os == 'Windows'
         shell: powershell
         run: ./scripts/check.ps1
+      - name: Inspect Windows GPU configuration (GPU optional)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/diagnose.ps1 -Gpu
       - name: Check Windows CPU PyTorch runtime (no model inference)
         if: runner.os == 'Windows'
         shell: powershell

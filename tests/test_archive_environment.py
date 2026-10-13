@@ -65,6 +65,8 @@ def test_archive_http_and_exclusive_gzip(store, frozen, monkeypatch, tmp_path):
 @pytest.mark.parametrize("mode", ["missing", "valid", "failure", "malformed"])
 def test_gpu_inventory_is_optional_and_cached(monkeypatch, mode):
     hardware_inventory.cache_clear()
+    monkeypatch.setattr("llm_benchmark.environment.platform.processor", lambda: "Fixture CPU")
+    monkeypatch.setattr("llm_benchmark.environment.platform.system", lambda: "Linux")
     monkeypatch.setattr(
         "llm_benchmark.environment.shutil.which",
         lambda _: None if mode == "missing" else "/usr/bin/nvidia-smi",

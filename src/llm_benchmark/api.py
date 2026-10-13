@@ -17,7 +17,7 @@ from pydantic import Field
 from llm_benchmark.adapters import AdapterError, OllamaAdapter, capabilities, validate_endpoint
 from llm_benchmark.code_eval import CodeConfig, build_code_set
 from llm_benchmark.domain import ModelConfig, SetConfig, StartRun, StrictModel
-from llm_benchmark.environment import hardware_inventory, torch_status
+from llm_benchmark.environment import gpu_status, hardware_inventory, torch_status
 from llm_benchmark.generators import REGISTRY, registry_tree
 from llm_benchmark.reports import export_report, stream_jsonl
 from llm_benchmark.runner import Scheduler, comparison, summarize
@@ -151,6 +151,10 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             "code_license": "未決定",
             "paid_api_required": False,
         }
+
+    @app.post("/api/environment/gpu")
+    def check_gpu():
+        return gpu_status()
 
     @app.post("/api/environment/torch")
     def check_torch():

@@ -317,16 +317,23 @@ def holdout_import(path: Path):
 
 
 @app.command("doctor")
-def doctor(torch: bool = False):
-    """OS/機器構成を診断。--torch時のみPyTorch/CUDAを明示検査。"""
+def doctor(torch: bool = False, gpu: bool = False):
+    """OS/機器構成を診断。--torchでCUDA、--gpuでGPU全体の単発計測。"""
     import platform
 
-    from llm_benchmark.environment import backend_versions, hardware_inventory, torch_status
+    from llm_benchmark.environment import (
+        backend_versions,
+        gpu_status,
+        hardware_inventory,
+        torch_status,
+    )
 
     report = {"os": platform.system(), **hardware_inventory(), "packages": backend_versions()}
     if torch:
         report["torch"] = torch_status()
-    typer.echo(json.dumps(report, ensure_ascii=False, indent=2))
+    if gpu:
+        report["gpu_sample"] = gpu_status()
+    typer.echo(json.dumps(report, ensure_ascii=True, indent=2))
 
 
 if __name__ == "__main__":

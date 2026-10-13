@@ -132,3 +132,19 @@ CIはWindows/Linux両方でPythonテスト、型検査、Webテスト・ビル�
 | Docker診断失敗 | Desktop起動、Linuxコンテナモード、固定イメージ、cgroup/権限条件を確認。制限を緩めて成功扱いにしない |
 
 公式資料: [uvとPyTorch](https://docs.astral.sh/uv/guides/integration/pytorch/)、[PyTorch Windows](https://pytorch.org/get-started/locally/)、[Ollama Windows](https://docs.ollama.com/windows)、[Docker Desktop Windows](https://docs.docker.com/desktop/setup/install/windows-install/)。依存構成は2026-10-12にuv公式GitHub資料と公式wheel indexで確認しました。
+
+
+## Intel / NVIDIA併用PCのGPU診断
+
+Windowsでは`nvidia-smi`によるNVIDIA構成情報に、CIMのディスプレイアダプター名・ドライバー版を補完します。PATHにない場合はWindows System32とNVIDIA NVSMIの標準配置も確認します。NVIDIA取得失敗とCIM取得失敗を別々に表示し、CIMだけで検出したGPUの専用VRAM容量はN/Aです。GPUが表示されても、OllamaがそのGPUで推論していることを保証するものではありません。
+
+```powershell
+git pull
+.\scripts\diagnose.ps1 -Gpu
+```
+
+または`uv run --no-sync forge doctor --gpu`で同じ診断を実行できます。JSONの日本語はWindowsの文字コードに依存しないエスケープ形式です。追加パッケージ・Torch・CUDA toolkitのインストールやモデルの再実行は不要です。アプリを再起動後、設定画面の「GPUの現在値を確認」からも単発計測できます。
+
+`gpu_devices`は構成情報、`gpu_sample`はNVIDIA GPU全体の使用率・使用メモリ・電力・温度の取得時点の値です。他アプリの使用量を含み、モデル単位やベンチマーク中のPeakではありません。ドライバーが提供しない値はN/A（JSONではnull）と理由を返します。構成情報はアプリ起動後の初回取得をキャッシュし、現在値は診断ボタンを押すたびに取得します。診断失敗でも通常評価を禁止せず、計測値を0で代用しません。
+
+Cloudでは応答fixtureによる検証を実施し、Windows CIにもPowerShell診断を追加しています。実際のRTX 5070 Laptop GPUでの取得値・ドライバー互換性は、上記の実機診断結果で確認してください。ドライバーの自動更新やGPU切り替え設定の変更は行いません。

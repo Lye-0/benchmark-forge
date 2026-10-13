@@ -1,6 +1,9 @@
 """Non-secret, process-cached hardware inventory. No usage or power estimates."""
 
 import csv
+import json
+import math
+import os
 import platform
 import shutil
 import subprocess
@@ -31,9 +34,41 @@ def hardware_inventory() -> dict:
         "gpu_inventory_reason": "nvidia-smiが見つかりません",
         "inventory_scope": "application host; first-use cached hardware inventory; not sampled usage",
     }
+    devices, reason = nvidia_inventory()
+    result.update(gpu_devices=devices or None, gpu_inventory_reason=reason)
+    if platform.system() == "Windows":
+        windows_devices, windows_reason = windows_gpu_inventory()
+        names = {device["name"].casefold() for device in devices}
+        devices.extend(
+            device for device in windows_devices if device["name"].casefold() not in names
+        )
+        result["gpu_devices"] = devices or None
+        result["gpu_inventory_reason"] = (
+            "; ".join(message for message in (reason, windows_reason) if message) or None
+        )
+    return result
+
+
+def nvidia_binary() -> str | None:
     binary = shutil.which("nvidia-smi")
+    if binary or platform.system() != "Windows":
+        return binary
+    # Drivers can install nvidia-smi without adding NVSMI to PATH.
+    candidates = [
+        Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32" / "nvidia-smi.exe",
+        Path(os.environ.get("ProgramFiles", "C:/Program Files"))
+        / "NVIDIA Corporation"
+        / "NVSMI"
+        / "nvidia-smi.exe",
+    ]
+    return next((str(path) for path in candidates if path.is_file()), None)
+
+
+def nvidia_inventory() -> tuple[list[dict], str | None]:
+    binary = nvidia_binary()
     if not binary:
-        return result
+        return [], "nvidia-smiが見つかりません（NVIDIAの詳細は未取得）"
+    timeout = 8 if platform.system() == "Windows" else 2
     try:
         process = subprocess.run(
             [
@@ -43,33 +78,100 @@ def hardware_inventory() -> dict:
             ],
             capture_output=True,
             text=True,
-            timeout=2,
+            encoding="utf-8-sig",
+            timeout=timeout,
             check=True,
         )
         if len(process.stdout) > 64000:
             raise ValueError("inventory limit")
         devices = []
         for row in csv.reader(process.stdout.splitlines()):
-            if len(row) != 3:
+            if len(row) != 3 or not row[0].strip() or not row[1].strip():
                 raise ValueError("invalid inventory")
-            memory = int(row[2].strip())
-            if memory <= 0:
+            memory_text = row[2].strip()
+            memory = (
+                None if memory_text in {"N/A", "[N/A]", "[Not Supported]"} else int(memory_text)
+            )
+            if memory is not None and memory <= 0:
                 raise ValueError("invalid memory")
             devices.append(
                 {
                     "name": row[0].strip(),
                     "driver_version": row[1].strip(),
-                    "total_vram_bytes": memory * 1048576,
+                    "total_vram_bytes": memory * 1048576 if memory is not None else None,
+                    "source": "nvidia-smi",
+                    "memory_unavailable_reason": "ドライバーがVRAM容量を報告していません"
+                    if memory is None
+                    else None,
                 }
             )
         if not devices:
             raise ValueError("no devices")
-        result.update(gpu_devices=devices, gpu_inventory_reason=None)
-    except (OSError, subprocess.SubprocessError, ValueError):
-        result["gpu_inventory_reason"] = (
-            "GPU情報を取得できません（使用率・電力の代用値は生成しません）"
+        return devices, None
+    except subprocess.TimeoutExpired:
+        return [], f"nvidia-smiが{timeout}秒以内に応答しません（GPU詳細は未取得）"
+    except subprocess.CalledProcessError:
+        return [], "nvidia-smiが失敗しました。NVIDIAドライバーの状態を確認してください"
+    except OSError:
+        return [], "nvidia-smiを起動できません（実行パス・権限を確認してください）"
+    except ValueError:
+        return [], "nvidia-smiの応答形式を読み取れません（GPU詳細は未取得）"
+
+
+def windows_gpu_inventory() -> tuple[list[dict], str | None]:
+    """CIM adapter names only. AdapterRAM is not a reliable dedicated VRAM capacity."""
+    binary = (
+        Path(os.environ.get("SystemRoot", "C:/Windows"))
+        / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    )
+    command = (
+        "$ErrorActionPreference='Stop'; "
+        "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); "
+        "@(Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion) "
+        "| ConvertTo-Json -Compress"
+    )
+    try:
+        process = subprocess.run(
+            [str(binary), "-NoProfile", "-NonInteractive", "-Command", command],
+            capture_output=True,
+            text=True,
+            encoding="utf-8-sig",
+            timeout=8,
+            check=True,
         )
-    return result
+        if len(process.stdout) > 64000:
+            raise ValueError("inventory limit")
+        rows = json.loads(process.stdout)
+        # PowerShell 5.1 may unwrap a one-element pipeline array.
+        if isinstance(rows, dict):
+            rows = [rows]
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("no adapters")
+        devices = []
+        for row in rows:
+            if (
+                not isinstance(row, dict)
+                or not isinstance(row.get("Name"), str)
+                or not row["Name"].strip()
+            ):
+                raise ValueError("invalid adapter")
+            driver = row.get("DriverVersion")
+            devices.append(
+                {
+                    "name": row["Name"].strip(),
+                    "driver_version": driver
+                    if isinstance(driver, str) and driver.strip()
+                    else None,
+                    "total_vram_bytes": None,
+                    "source": "windows-cim",
+                    "memory_unavailable_reason": "CIMの共有/専用メモリをVRAM容量の代用にはしません",
+                }
+            )
+        return devices, None
+    except subprocess.TimeoutExpired:
+        return [], "Windows GPU構成の取得が8秒でタイムアウトしました"
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return [], "Windows GPU構成を取得できません（CIM/PowerShell）"
 
 
 def backend_versions() -> dict:
@@ -107,3 +209,77 @@ def torch_status() -> dict:
             "live_model_verified": False,
             "reason": "PyTorchを読み込めません。任意依存・DLL・ドライバーを確認してください（通常評価は利用可能）",
         }
+
+
+def gpu_status() -> dict:
+    """Explicit point sample of device-wide counters, never a model-specific peak."""
+    from datetime import UTC, datetime
+
+    result: dict[str, Any] = {
+        "available": False,
+        "scope": "GPU全体の単発計測。他アプリも含み、モデル専用の使用量やPeakではありません",
+        "devices": None,
+        "observed_at": None,
+        "reason": None,
+    }
+    binary = nvidia_binary()
+    if not binary:
+        return {**result, "reason": "nvidia-smiが見つかりません。GPUの単発計測は利用不可です"}
+    try:
+        process = subprocess.run(
+            [
+                binary,
+                "--query-gpu=uuid,name,utilization.gpu,memory.used,power.draw,temperature.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8-sig",
+            timeout=8,
+            check=True,
+        )
+        if len(process.stdout) > 64000:
+            raise ValueError("sample limit")
+        devices = []
+        for row in csv.reader(process.stdout.splitlines()):
+            if len(row) != 6 or not row[0].strip() or not row[1].strip():
+                raise ValueError("invalid sample")
+            values: dict[str, float | None] = {}
+            reasons = {}
+            for key, raw, limit, scale in zip(
+                ("utilization_percent", "used_vram_bytes", "power_watts", "temperature_celsius"),
+                row[2:],
+                (100, None, None, None),
+                (1, 1048576, 1, 1),
+                strict=True,
+            ):
+                raw = raw.strip()
+                if raw in {"N/A", "[N/A]", "[Not Supported]"}:
+                    values[key] = None
+                    reasons[key] = "ドライバーがこの計測値を提供していません"
+                    continue
+                value = float(raw)
+                if not math.isfinite(value) or value < 0 or (limit is not None and value > limit):
+                    raise ValueError("invalid sample value")
+                values[key] = value * scale
+            devices.append(
+                {
+                    "uuid": row[0].strip(),
+                    "name": row[1].strip(),
+                    **values,
+                    "unavailable_reasons": reasons,
+                }
+            )
+        if not devices:
+            raise ValueError("no sample")
+        return {
+            **result,
+            "available": True,
+            "devices": devices,
+            "observed_at": datetime.now(UTC).isoformat(),
+        }
+    except subprocess.TimeoutExpired:
+        result["reason"] = "nvidia-smiの単発計測が8秒でタイムアウトしました"
+    except (OSError, subprocess.SubprocessError, ValueError):
+        result["reason"] = "nvidia-smiの単発計測に失敗しました（ドライバーまたは応答形式）"
+    return result

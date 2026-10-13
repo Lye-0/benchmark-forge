@@ -16,10 +16,10 @@
 
 ## 今回実行した検証
 
-- 今回のpytest: **161 passed / 2 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
+- 今回のpytest: **179 passed / 2 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
 - 新規検証: UTF-8分割NDJSON、可視chunkの時刻、終端欠落・過大応答・中止時のclose、モデル申告情報、GPU情報の欠落/異常、別スレッドでの逐次出力、出力中の更新に対するスナップショット整合、gzip既存ファイル保護。HTTP/機器応答はfixtureであり実モデル・GPU検証ではありません。
 - Ruff lint / format、mypy: PASS。
-- Vitest: **12 passed**。TypeScript / Vite: PASS。
+- Vitest: **14 passed**。TypeScript / Vite: PASS。
 - Playwright / system Chromium: **4 passed**。100問2モデルのfreeze・中断再開・比較、390px画面、私有holdout取込、複数ターン評価、専用速度表示。
 - 全24生成器を5難易度×8seedで再生成し、独立したルールソルバーと採点を照合。固定480件を参照照合。整数/浮動小数の等しい難易度でIDが同じになるよう正規化。
 - 1000件の動的セットと1000件の評価結果/試行の一意性。別Pythonプロセスを`os._exit`で異常終了させ、確定済み結果を保持して未終了試行をinterruptedに復元。
@@ -99,3 +99,11 @@ Cloud/Linuxの検証: Python160件成功・実Docker2件skip、Web12件、E2E4�
 旧版の確定セットを読み込む回帰試験を追加。保存済みの問題文・参照解答・ハッシュを維持し、新規セットとの直接比較はセットハッシュ差で拒否します。過去のユーザー回答を再採点したり、過去スコアを補正したりはしません。
 
 最終検証: Cloud/LinuxでPython161件成功・実Docker2件skip、Web12件、E2E4件、Ruff・mypy・TypeScript・Vite成功。今回のWindows実行結果は未確認。提供済みWindows実行ログではGPU機種情報が未取得だったため、次のGPU計測対応に先立ってGPU名とドライバー版をユーザーへ確認中です。Torch/Transformersの追加インストールやモデル再実行は、この確認のためには不要です。
+
+### WindowsハイブリッドGPU検出・任意の単発計測（2026-10-13）
+
+ユーザーからIntel UHD GraphicsとNVIDIA RTX 5070 Laptop GPUの構成を確認。過去ログの汎用失敗文だけでは根本原因を特定できないため、NVIDIA診断を起動失敗・タイムアウト・プロセス失敗・応答形式不正に分離しました。Windowsの待機上限を8秒とし、PATH外の標準配置も確認。CIMでアダプター名/ドライバー版を補完し、Intel/NVIDIA両方を表示。CIMのAdapterRAMは専用VRAMに流用しません。過去に保存済みの実行環境情報は書き換えません。
+
+設定画面・`forge doctor --gpu`・`diagnose.ps1 -Gpu`にGPU全体の単発計測を追加。使用率・使用メモリ・電力・温度のN/Aを保持し、取得時刻と計測範囲を明示します。モデル単位の帰属、実行中の連続サンプリング/Peak測定は未実装です。ドライバー/CUDA/グローバルPythonの変更は不要で、モデルも実行しません。Windows CIに実PowerShell診断を追加し、GPUがないrunnerでも欠測理由を報告します。診断JSONはASCIIエスケープで文字コード問題を回避します。
+
+Cloud/LinuxでPython179件（実Docker2件skip）、Web14件、E2E4件、型検査・ビルド成功。GPU応答はfixtureで、Windows実機・RTX実測ではありません。実機で`diagnose.ps1 -Gpu`の結果を確認する段階です。
