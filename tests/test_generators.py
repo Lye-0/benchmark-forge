@@ -135,3 +135,32 @@ def test_invalid_config(patch):
 )
 def test_grading_contract(answer, spec, correct):
     assert grade(answer, spec).correct is correct
+
+
+def test_join_schema_version_preserves_existing_frozen_sets(store):
+    from pathlib import Path
+
+    from llm_benchmark.domain import FrozenSet
+    from llm_benchmark.runner import comparison, summarize
+
+    legacy = FrozenSet.model_validate_json(
+        (Path(__file__).parent / "fixtures" / "legacy_join_set.json").read_text(encoding="utf-8")
+    )
+    store.save_set(legacy)
+    current = build_set(legacy.config)
+    store.save_set(current)
+    assert current.set_hash != legacy.set_hash
+    assert store.get_set(legacy.set_id) == legacy
+    assert {p.generator_version for p in legacy.problems} == {"1.0.0"}
+    assert {p.generator_version for p in current.problems} == {"1.1.0"}
+    for old, new in zip(legacy.problems, current.problems, strict=True):
+        assert old.answer_spec == new.answer_spec
+        assert old.seed == new.seed
+        assert old.content_hash != new.content_hash
+        assert "商品idをキー" in new.prompt
+        assert grade(mock_solve(new.prompt), new.answer_spec).correct
+    reports = [
+        summarize(store, store.create_run(s.set_id, store.get_model("mock-reference")))
+        for s in (legacy, current)
+    ]
+    assert not comparison(reports)["comparable"]

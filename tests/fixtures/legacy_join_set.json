@@ -1,0 +1,116 @@
+{
+  "set_id": "set-eb6a3ea0948fac6d54d7eb09",
+  "set_hash": "eb6a3ea0948fac6d54d7eb093e31b99b78b989bfe23290a656c9cf2efab665f5",
+  "config": {
+    "generator_ids": [
+      "data.join"
+    ],
+    "count": 2,
+    "seed": 42,
+    "difficulty_min": 0.0,
+    "difficulty_max": 100.0,
+    "fixed_ratio": 0.5,
+    "profile": "preview-quick-v1",
+    "custom": false,
+    "evaluation_mode": "text"
+  },
+  "problems": [
+    {
+      "problem_id": "p-2f679cf4edd4bc6dfd6d5f72",
+      "schema_version": "1",
+      "generator_id": "data.join",
+      "generator_version": "1.0.0",
+      "category_id": "06",
+      "subcategory_id": "結合",
+      "tags": [
+        "日本語理解",
+        "決定的生成"
+      ],
+      "seed": 109101,
+      "target_difficulty": 25.0,
+      "empirical_difficulty": null,
+      "prompt": "課題: data.join\nproducts と orders を id で結合し、商品ごとの price*quantity の売上合計をJSONで答えてください。全商品を含め、注文がない商品は0です。\n入力(JSON):\n{\"orders\":[{\"id\":\"sku-0\",\"quantity\":5},{\"id\":\"sku-1\",\"quantity\":4},{\"id\":\"sku-2\",\"quantity\":2},{\"id\":\"sku-0\",\"quantity\":6},{\"id\":\"sku-1\",\"quantity\":6},{\"id\":\"sku-2\",\"quantity\":7},{\"id\":\"sku-1\",\"quantity\":3},{\"id\":\"sku-2\",\"quantity\":1}],\"products\":[{\"id\":\"sku-0\",\"price\":8},{\"id\":\"sku-1\",\"price\":46},{\"id\":\"sku-2\",\"price\":16}]}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。",
+      "answer_spec": {
+        "expected": {
+          "sku-0": 88,
+          "sku-1": 598,
+          "sku-2": 160
+        },
+        "type": "json",
+        "tolerance": 0.0
+      },
+      "grading_type": "json",
+      "verification": "verified",
+      "origin": "fixed",
+      "template": "join-and-reduce",
+      "representation": "text+json",
+      "features": {
+        "products": 3,
+        "orders": 8
+      },
+      "provenance": "algorithmic-original",
+      "simulation": {},
+      "content_hash": "2f679cf4edd4bc6dfd6d5f72089c0c4d096686fa23ac5e23adc690b76df44d82"
+    },
+    {
+      "problem_id": "p-5b12ae985328ae34d6b9374e",
+      "schema_version": "1",
+      "generator_id": "data.join",
+      "generator_version": "1.0.0",
+      "category_id": "06",
+      "subcategory_id": "結合",
+      "tags": [
+        "日本語理解",
+        "決定的生成"
+      ],
+      "seed": 1801823908,
+      "target_difficulty": 75.0,
+      "empirical_difficulty": null,
+      "prompt": "課題: data.join\nproducts と orders を id で結合し、商品ごとの price*quantity の売上合計をJSONで答えてください。全商品を含め、注文がない商品は0です。\n入力(JSON):\n{\"orders\":[{\"id\":\"sku-5\",\"quantity\":4},{\"id\":\"sku-5\",\"quantity\":7},{\"id\":\"sku-0\",\"quantity\":4},{\"id\":\"sku-0\",\"quantity\":10},{\"id\":\"sku-2\",\"quantity\":4},{\"id\":\"sku-0\",\"quantity\":10},{\"id\":\"sku-3\",\"quantity\":5},{\"id\":\"sku-4\",\"quantity\":3},{\"id\":\"sku-5\",\"quantity\":1},{\"id\":\"sku-3\",\"quantity\":5},{\"id\":\"sku-5\",\"quantity\":1},{\"id\":\"sku-4\",\"quantity\":10},{\"id\":\"sku-5\",\"quantity\":2},{\"id\":\"sku-2\",\"quantity\":3},{\"id\":\"sku-5\",\"quantity\":4},{\"id\":\"sku-5\",\"quantity\":3},{\"id\":\"sku-3\",\"quantity\":8},{\"id\":\"sku-5\",\"quantity\":4},{\"id\":\"sku-3\",\"quantity\":3}],\"products\":[{\"id\":\"sku-0\",\"price\":6},{\"id\":\"sku-1\",\"price\":40},{\"id\":\"sku-2\",\"price\":14},{\"id\":\"sku-3\",\"price\":18},{\"id\":\"sku-4\",\"price\":25},{\"id\":\"sku-5\",\"price\":2}]}\n回答だけを出力してください。説明やMarkdownの囲みは不要です。",
+      "answer_spec": {
+        "expected": {
+          "sku-0": 144,
+          "sku-1": 0,
+          "sku-2": 98,
+          "sku-3": 378,
+          "sku-4": 325,
+          "sku-5": 52
+        },
+        "type": "json",
+        "tolerance": 0.0
+      },
+      "grading_type": "json",
+      "verification": "verified",
+      "origin": "dynamic",
+      "template": "join-and-reduce",
+      "representation": "text+json",
+      "features": {
+        "products": 6,
+        "orders": 19
+      },
+      "provenance": "algorithmic-original",
+      "simulation": {},
+      "content_hash": "5b12ae985328ae34d6b9374e07bde1014e16f3e6a95010cfc8a17a8a76e752e8"
+    }
+  ],
+  "profile_version": "Preview v1",
+  "grader_version": "1.0.0",
+  "weights": {
+    "p-2f679cf4edd4bc6dfd6d5f72": 0.5,
+    "p-5b12ae985328ae34d6b9374e": 0.5
+  },
+  "warnings": [
+    "Preview: 難易度は未校正。正式なStandardスコアではありません。",
+    "固定問題は公開されています。学習データ汚染の可能性があります。",
+    "検証済みの選択範囲: 1/16大カテゴリ。未選択・未実装分野は評価していません。",
+    "総合正答率はカテゴリ均等重み。固定/動的の内訳は実問題数に基づきます。"
+  ],
+  "duplicate_stats": {
+    "surface_rejected": 0,
+    "adopted": 2,
+    "structures": 1,
+    "repeated_structures": 1
+  },
+  "created_at": "2026-10-13T10:31:43.401057+00:00",
+  "metadata": {}
+}

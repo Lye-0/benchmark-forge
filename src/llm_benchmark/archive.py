@@ -20,7 +20,7 @@ def split_archive(store: Store, run_id: str, output: Path, part_bytes: int, comp
         raise ValueError("分割サイズは1バイト以上が必要です")
     # Validate before creating anything; exclusive mkdir also protects an empty existing folder.
     store.run_status(run_id)
-    output.mkdir()
+    output.mkdir(mode=0o700)
     manifest: dict = {
         "schema": "forge-split-v1",
         "record_schema": "forge-stream-v1",

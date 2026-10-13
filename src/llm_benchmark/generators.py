@@ -103,11 +103,22 @@ class Generator:
 REGISTRY: dict[str, Generator] = {}
 
 
-def register(id: str, category: str, subcategory: str, name: str, template: str, type: str):
+def register(
+    id: str,
+    category: str,
+    subcategory: str,
+    name: str,
+    template: str,
+    type: str,
+    *,
+    version: str = "1.0.0",
+):
     def decorator(fn: Builder) -> Builder:
         if id in REGISTRY:
             raise ValueError(f"Duplicate generator: {id}")
-        REGISTRY[id] = Generator(id, category, subcategory, name, template, type, fn)
+        REGISTRY[id] = Generator(
+            id, category, subcategory, name, template, type, fn, version=version
+        )
         return fn
 
     return decorator
@@ -273,7 +284,9 @@ def aggregate(r: random.Random, d: float):
     )
 
 
-@register("data.join", "06", "結合", "キー結合と売上集計", "join-and-reduce", "json")
+@register(
+    "data.join", "06", "結合", "キー結合と売上集計", "join-and-reduce", "json", version="1.1.0"
+)
 def join(r: random.Random, d: float):
     products: list[dict[str, Any]] = [
         {"id": f"sku-{i}", "price": r.randint(1, 50)} for i in range(size(d, 2, 8))
@@ -289,7 +302,7 @@ def join(r: random.Random, d: float):
     return (
         {"products": products, "orders": orders},
         answer,
-        "products と orders を id で結合し、商品ごとの price*quantity の売上合計をJSONで答えてください。全商品を含め、注文がない商品は0です。",
+        "products と orders を id で結合し、商品ごとの price*quantity の売上合計を答えてください。回答は商品idをキー、売上合計の数値を値とする単一のJSONオブジェクトです。配列やproductsなどの外側のキーは付けません。全商品を含め、注文がない商品は0です。",
         {"products": len(products), "orders": len(orders)},
     )
 

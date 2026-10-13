@@ -16,10 +16,10 @@
 
 ## 今回実行した検証
 
-- 今回のpytest: **156 passed / 2 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
+- 今回のpytest: **161 passed / 2 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
 - 新規検証: UTF-8分割NDJSON、可視chunkの時刻、終端欠落・過大応答・中止時のclose、モデル申告情報、GPU情報の欠落/異常、別スレッドでの逐次出力、出力中の更新に対するスナップショット整合、gzip既存ファイル保護。HTTP/機器応答はfixtureであり実モデル・GPU検証ではありません。
 - Ruff lint / format、mypy: PASS。
-- Vitest: **11 passed**。TypeScript / Vite: PASS。
+- Vitest: **12 passed**。TypeScript / Vite: PASS。
 - Playwright / system Chromium: **4 passed**。100問2モデルのfreeze・中断再開・比較、390px画面、私有holdout取込、複数ターン評価、専用速度表示。
 - 全24生成器を5難易度×8seedで再生成し、独立したルールソルバーと採点を照合。固定480件を参照照合。整数/浮動小数の等しい難易度でIDが同じになるよう正規化。
 - 1000件の動的セットと1000件の評価結果/試行の一意性。別Pythonプロセスを`os._exit`で異常終了させ、確定済み結果を保持して未終了試行をinterruptedに復元。
@@ -91,3 +91,11 @@ Cloud/LinuxでPython156件（実Docker2件skip）、Web11件、E2E4件、Ruff・
 形式別・タグ別の既存集計を画面に追加。全割当数を分母として処理済み数も併記し、タグの重複は総合点に加算しません。採点不可も結果内訳とログの絞り込み対象に追加しました。
 
 Cloud/Linuxの検証: Python160件成功・実Docker2件skip、Web12件、E2E4件、Ruff・mypy・TypeScript・Vite成功。分割の往復一致（未回答問題/結果/試行）、圧縮、日本語パス、既存出力保護、破損/欠落、途中失敗、マニフェストの外部パス拒否を検証。Windows固有動作は今回のCI実行待ちです。
+
+### 売上集計問題の回答形式（2026-10-13）
+
+`data.join`の設問に「商品idをキー、売上合計の数値を値とする単一JSONオブジェクト」を明記。配列や外側のproductsキーを付けない契約をモデルへ事前提示します。参照解答と採点器は変更せず、生成器を1.1.0へ更新し、対応する公開固定20問を再生成しました。その他の固定460問は変更していません。
+
+旧版の確定セットを読み込む回帰試験を追加。保存済みの問題文・参照解答・ハッシュを維持し、新規セットとの直接比較はセットハッシュ差で拒否します。過去のユーザー回答を再採点したり、過去スコアを補正したりはしません。
+
+最終検証: Cloud/LinuxでPython161件成功・実Docker2件skip、Web12件、E2E4件、Ruff・mypy・TypeScript・Vite成功。今回のWindows実行結果は未確認。提供済みWindows実行ログではGPU機種情報が未取得だったため、次のGPU計測対応に先立ってGPU名とドライバー版をユーザーへ確認中です。Torch/Transformersの追加インストールやモデル再実行は、この確認のためには不要です。
