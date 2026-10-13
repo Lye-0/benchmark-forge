@@ -48,4 +48,4 @@ Windows実機のDocker未導入状態を確認済み。通常評価を継続し�
 
 Ollamaの開始/再開時のモデルmanifest digest・テンプレートハッシュと問題結果の対応を保存。区間間の変更は警告し、直接比較・校正出力を拒否。取得不能時も通常評価を継続。ローカル重みの明示的な直接ハッシュCLIも追加。実測校正と、ハッシュ対象が推論で使用されたことの検証は残作業。
 
-Windows Actionsで直接ハッシュ取得2件が失敗したため、CPython 3.12のstat/fstat間のctimeの意味の違いによる誤検出を修正。同じAPIの読取前後ではctimeを含む変更検出を維持し、回帰試験を追加。CloudでPython210件・Web16件・E2E4件成功。修正後のWindows CI結果確認が必要で、モデル再実行や追加インストールは不要です。
+Windows Actionsで直接ハッシュ取得2件が失敗したため、CPython 3.12のstat/fstat間のctimeの意味の違いによる誤検出を修正。同じAPIの読取前後ではctimeを含む変更検出を維持し、回帰試験を追加。CloudでPython210件・Web16件・E2E4件成功。修正コミット`ee1b3d9`の[Actions #17](https://github.com/Lye-0/benchmark-forge/actions/runs/38422172355)でWindows/Linux両ジョブの成功も確認済み。モデル再実行や追加インストールは不要です。

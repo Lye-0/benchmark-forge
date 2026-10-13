@@ -165,4 +165,6 @@ CPython 3.12.14の公式ソースで、Windowsのパス側statは互換性のた
 
 API間のctime差を注入した2件の回帰試験は修正前に失敗、修正後に成功。ctimeだけの読取中変化（パス/descriptorの両方）とファイルID変更も拒否する3件を追加しました。Cloud/Linuxでハッシュ試験9件、全Python **210 passed / 6 skipped**（実Docker3・Windows PowerShell3）、Web **16 passed**、E2E **4 passed**、Ruff lint/format・mypy・TypeScript・Vite・秘密情報ガードが成功しました。
 
-Windows実行はこのCloudで行っていません。Actions APIへの読み取りは403 Forbiddenで拒否されたため、修正後のWindows CI結果は未確認です。利用者のモデル再実行、Python更新、Docker導入は必要ありません。停止時の到達段階は **7/7（Phase 6の品質仕上げ）**、全要件の完了ではなくPhase 3〜6の残項目は維持します。
+修正コミット`ee1b3d98f9d1fee0f60d142ac2c7f3bcc31e316b`の[Actions #17](https://github.com/Lye-0/benchmark-forge/actions/runs/38422172355)で **Windows/Linux両ジョブの成功**を確認しました。APIは403で拒否されましたが、公開Actionsページから対象コミットと各ジョブ/ステップの結果を確認できました。Windowsの`check.ps1`、GPU構成診断、CPU版PyTorch診断、Playwright E2Eが成功。これはGitHub runner上の検証であり、利用者のGPUでの実モデル推論やDocker Desktop検証ではありません。Linux側のジョブは実Docker隔離試験を含みます。
+
+利用者のモデル再実行、Python更新、Docker導入は必要ありません。到達段階は **7/7（Phase 6の品質仕上げ）**、全要件の完了ではなくPhase 3〜6の残項目は維持します。
