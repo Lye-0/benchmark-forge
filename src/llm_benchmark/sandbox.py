@@ -9,6 +9,24 @@ from dataclasses import dataclass
 IMAGE = "python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1"
 
 
+# Keep a small observer alive in the same cgroup. Docker's OOMKilled flag is a
+# daemon event, not reliable proof that the child was killed by this memory limit.
+OOM_PROBE = """import json, subprocess, sys
+from pathlib import Path
+
+def killed():
+    events = dict(line.split() for line in Path('/sys/fs/cgroup/memory.events').read_text().splitlines())
+    return int(events['oom_kill'])
+
+before = killed()
+child = subprocess.run([
+    sys.executable, '-I', '-S', '-c',
+    "with open('/proc/self/oom_score_adj', 'w') as f: f.write('1000');\\nx = bytearray(300*1024*1024)"
+])
+print(json.dumps({'child_exit': child.returncode, 'oom_kill_delta': killed() - before}))
+"""
+
+
 class IsolationUnavailable(RuntimeError):
     pass
 
@@ -250,11 +268,23 @@ print('isolation-ok')
                 raise IsolationUnavailable(
                     "無権限・通信・ファイル・cgroup制限の実検証に失敗しました"
                 )
-            oom = await self._run("x=bytearray(300*1024*1024)", seconds=10)
+            oom = await self._run(OOM_PROBE, seconds=10)
+            evidence = None
+            if oom.status in {"ok", "oom"} and oom.exit_code == 0:
+                try:
+                    evidence = json.loads(oom.stdout)
+                except ValueError:
+                    pass
+            oom_verified = (
+                isinstance(evidence, dict)
+                and evidence.get("child_exit") == -9
+                and type(evidence.get("oom_kill_delta")) is int
+                and evidence["oom_kill_delta"] > 0
+            )
             timeout = await self._run("while True: pass", seconds=6)
-            if oom.status != "oom" or timeout.status not in {"error", "timeout"}:
+            if not oom_verified or timeout.status not in {"error", "timeout"}:
                 raise IsolationUnavailable(
-                    f"OOM/CPU時間制限の実検証に失敗しました（OOM: {oom.status}, exit={oom.exit_code}; CPU: {timeout.status}, exit={timeout.exit_code}）"
+                    f"OOM/CPU時間制限の実検証に失敗しました（OOM: {oom.status}, exit={oom.exit_code}, cgroup確認={oom_verified}; CPU: {timeout.status}, exit={timeout.exit_code}）"
                 )
             self.verified = True
             self.state = "verified"

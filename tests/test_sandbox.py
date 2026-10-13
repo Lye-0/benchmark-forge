@@ -205,3 +205,63 @@ async def test_attachment_eof_waits_for_final_container_state(monkeypatch, mode)
         assert result.exit_code == (137 if mode == "oom" else 42)
     assert operations.index("wait") > operations.index("start")
     assert operations[-1] == "rm"
+
+
+@pytest.mark.parametrize(
+    "status,exit_code,evidence,available",
+    [
+        ("ok", 0, '{"child_exit": -9, "oom_kill_delta": 1}', True),
+        ("oom", 0, '{"child_exit": -9, "oom_kill_delta": 1}', True),
+        ("ok", 0, '{"child_exit": -9, "oom_kill_delta": 0}', False),
+        ("ok", 0, '{"child_exit": 1, "oom_kill_delta": 1}', False),
+        ("ok", 0, '{"child_exit": -9, "oom_kill_delta": true}', False),
+        ("ok", 0, "malformed", False),
+        ("error", 137, "", False),
+        ("oom", 137, "", False),
+        ("timeout", None, "", False),
+    ],
+)
+async def test_verification_requires_cgroup_oom_evidence(
+    monkeypatch, status, exit_code, evidence, available
+):
+    from llm_benchmark.sandbox import OOM_PROBE, CodeResult
+
+    async def info(*args, **kwargs):
+        return 0, b"linux"
+
+    async def run(code, seconds=5):
+        if code == OOM_PROBE:
+            assert seconds == 10
+            return CodeResult(status, evidence, exit_code)
+        if code == "while True: pass":
+            return CodeResult("error", "", 137)
+        return CodeResult("ok", "isolation-ok\n", 0)
+
+    monkeypatch.setattr("llm_benchmark.sandbox.command", info)
+    sandbox = DockerSandbox()
+    monkeypatch.setattr(sandbox, "_run", run)
+    result = await sandbox.verify()
+    assert result["available"] is available
+    assert sandbox.verified is available
+    if not available:
+        with pytest.raises(IsolationUnavailable):
+            await sandbox.execute("print('untrusted fixture')")
+
+
+async def test_real_oom_verification_without_docker_oom_flag(monkeypatch):
+    if os.environ.get("FORGE_TEST_DOCKER") != "1":
+        pytest.skip("実Docker検証はFORGE_TEST_DOCKER=1で明示実行")
+    import json
+
+    async def without_flag(*args, **kwargs):
+        rc, raw = await command(*args, **kwargs)
+        if args[:3] == ("inspect", "--format", "{{json .State}}"):
+            state = json.loads(raw)
+            state["OOMKilled"] = False
+            raw = json.dumps(state).encode()
+        return rc, raw
+
+    monkeypatch.setattr("llm_benchmark.sandbox.command", without_flag)
+    sandbox = DockerSandbox()
+    result = await sandbox.verify()
+    assert result["available"], result["reason"]
