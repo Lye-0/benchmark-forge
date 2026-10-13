@@ -14,3 +14,4 @@
 - If creating commits, use Japanese Conventional Commits. No external deployment.
 
 - Continue across phase boundaries without waiting for confirmation. Stop only for a necessary user decision/action, after completing independent work.
+- When stopping, report the reached stage as N/7 (Phase 0–6), distinguish it from completed phases, and state the outstanding condition and required user action.

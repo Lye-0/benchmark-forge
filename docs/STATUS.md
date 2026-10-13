@@ -1,6 +1,8 @@
 # 実装・検証状況
 
-最終確認: 2026-10-12 / `Lye-0/benchmark-forge` / `main`。
+最新の状況は末尾の追記を参照。以下の各検証件数・実機確認は、記載された時点と環境の結果です。
+
+段階の報告方法: 全7段階（Phase 0〜6）のうち、到達段階は **7/7（Phase 6: 研究用の品質仕上げ）**。これは全要件の完了率ではありません。Phase 0〜2の基本経路は検証済みで、Phase 3〜6には下表の未完了・実機確認項目が残ります。ユーザー操作が必要になるまで、フェーズ境界だけで停止しません。
 
 フェーズの境界で停止せず、Phase 4〜6のCPU環境で検証できる縦方向の経路まで続行しました。実モデル/GPU・Codex認証・正式Standard・長期の生成器目標を完成したとは扱いません。
 
@@ -152,3 +154,15 @@ Cloud/LinuxでPython195件成功・6件skip（実Docker3件、Windows PowerShell
 ローカル重み/設定/tokenizerの実体をストリーミングでSHA-256記録する明示的な`model-fingerprint`コマンドを追加。絶対パスや時刻を内容識別値から除き、移動可能なマニフェストとして保存します。既存出力への上書き、モデルフォルダー内への出力、リンク、通常ファイル以外を拒否し、個別ファイルの読取中の変更を検出。モデル実行は行わず、ランへの自動紐付けや全体の原子的スナップショットは提供しません。
 
 Cloud/Linux検証: Python205件成功・6件skip（実Docker3件、Windows PowerShell3件）、Web16件、E2E4件、Ruff・mypy・TypeScript・Vite成功。Ollama通信はfixture検証で、実モデル推論は実施していません。Windows実行と実機モデル識別情報の取得は未確認です。
+
+### Windowsのモデルハッシュ取得における変更誤検出（2026-10-14 JST）
+
+ユーザー提供のWindows ActionsログはPython206件成功・2件失敗・3件skip。失敗2件は、通常のモデルハッシュ取得とCLI出力が、未変更ファイルを「取得中に変更された」と判定したものです。PowerShellラッパーはこの非ゼロ終了を正しく伝えており、今回の原因ではありません。
+
+CPython 3.12.14の公式ソースで、Windowsのパス側statは互換性のためctimeへ作成時刻を設定し、descriptor側fstatは変更時刻を返すことを確認しました（[posixmodule.c: win32_xstat](https://github.com/python/cpython/blob/v3.12.14/Modules/posixmodule.c#L2139)、[fileutils.c: _Py_attribute_data_to_stat](https://github.com/python/cpython/blob/v3.12.14/Python/fileutils.c#L1108)）。この2つのctimeを直接照合していたのが誤検出の原因です。
+
+読取前後のパスstat同士・fstat同士ではctimeも含めて照合し、両API間はデバイス・ファイルID・サイズ・更新時刻を照合するよう変更しました。ctimeを検査から全面的に除外せず、内容変更・パス差し替えの拒否、既存出力保護、SHA-256とマニフェスト形式を維持します。全ファイルの原子的スナップショットを保証するものではありません。
+
+API間のctime差を注入した2件の回帰試験は修正前に失敗、修正後に成功。ctimeだけの読取中変化（パス/descriptorの両方）とファイルID変更も拒否する3件を追加しました。Cloud/Linuxでハッシュ試験9件、全Python **210 passed / 6 skipped**（実Docker3・Windows PowerShell3）、Web **16 passed**、E2E **4 passed**、Ruff lint/format・mypy・TypeScript・Vite・秘密情報ガードが成功しました。
+
+Windows実行はこのCloudで行っていません。Actions APIへの読み取りは403 Forbiddenで拒否されたため、修正後のWindows CI結果は未確認です。利用者のモデル再実行、Python更新、Docker導入は必要ありません。停止時の到達段階は **7/7（Phase 6の品質仕上げ）**、全要件の完了ではなくPhase 3〜6の残項目は維持します。

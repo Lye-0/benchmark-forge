@@ -12,6 +12,11 @@ SUFFIXES = {".safetensors", ".gguf", ".bin", ".json", ".model", ".jinja"}
 VOCAB_FILES = {"vocab.txt", "merges.txt"}
 
 
+def _signature(info: os.stat_result, *, include_ctime: bool = True) -> tuple[int, ...]:
+    values = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+    return (*values, info.st_ctime_ns) if include_ctime else values
+
+
 def fingerprint_model(path: Path) -> dict:
     root = path.resolve(strict=True)
     if not root.is_file() and not root.is_dir():
@@ -35,6 +40,7 @@ def fingerprint_model(path: Path) -> dict:
     selected.sort(key=lambda file: file.relative_to(base).as_posix())
     records = []
     for file in selected:
+        path_before = file.stat()
         with file.open("rb") as stream:
             before = os.fstat(stream.fileno())
             if not stat.S_ISREG(before.st_mode):
@@ -43,10 +49,14 @@ def fingerprint_model(path: Path) -> dict:
             after = os.fstat(stream.fileno())
         current = file.stat()
 
-        def signature(s):
-            return s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns
-
-        if signature(before) != signature(after) or signature(after) != signature(current):
+        # Windows CPython 3.12 stat uses creation time for ctime, whereas fstat
+        # uses change time. Compare ctime only within the same API, retaining
+        # both change detection and the path/descriptor identity check.
+        if (
+            _signature(before) != _signature(after)
+            or _signature(path_before) != _signature(current)
+            or _signature(after, include_ctime=False) != _signature(current, include_ctime=False)
+        ):
             raise ValueError(
                 "取得中にファイルが変更されました。モデルの更新完了後に再実行してください"
             )
