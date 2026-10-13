@@ -53,3 +53,5 @@ Ollamaの開始/再開時のモデルmanifest digest・テンプレートハッ�
 Windows Actionsで直接ハッシュ取得2件が失敗したため、CPython 3.12のstat/fstat間のctimeの意味の違いによる誤検出を修正。同じAPIの読取前後ではctimeを含む変更検出を維持し、回帰試験を追加。CloudでPython210件・Web16件・E2E4件成功。修正コミット`ee1b3d9`の[Actions #17](https://github.com/Lye-0/benchmark-forge/actions/runs/38422172355)でWindows/Linux両ジョブの成功も確認済み。モデル再実行や追加インストールは不要です。
 
 2026-10-13 UTC: 順序不変入力の同値検出（13生成器）、構造別件数と採択率、任意のGPU連続サンプリング、推論seed設定、DB v3の問題単位保存/32問読取、1問単位の逐次アーカイブ、50件のログページ取得を追加。freeze作成時の全件保持・時間加重電力量・モデル別GPU使用率・数日実機試験・校正は後続課題。今回の変更の手順と現在の確認状態はSTATUS末尾を参照。
+
+今回の実装コミット`b3a1e3c`は[Actions #19](https://github.com/Lye-0/benchmark-forge/actions/runs/38428179630)でWindows/Linux両方成功。次の利用者操作は上記の2問による実GPU確認。到達7/7（Phase 6）、正式Standard・実測校正・後続拡張の完了とは区別します。
