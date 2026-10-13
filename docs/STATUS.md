@@ -16,7 +16,7 @@
 
 ## 今回実行した検証
 
-- 今回のpytest: **191 passed / 3 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
+- 今回のpytest: **195 passed / 3 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
 - 新規検証: UTF-8分割NDJSON、可視chunkの時刻、終端欠落・過大応答・中止時のclose、モデル申告情報、GPU情報の欠落/異常、別スレッドでの逐次出力、出力中の更新に対するスナップショット整合、gzip既存ファイル保護。HTTP/機器応答はfixtureであり実モデル・GPU検証ではありません。
 - Ruff lint / format、mypy: PASS。
 - Vitest: **16 passed**。TypeScript / Vite: PASS。
@@ -125,3 +125,11 @@ Linux CIのOOM/CPU診断失敗は個別結果が記録されておらず、原�
 実Dockerでは、子OOM後に親が正常終了してもDockerのフラグがtrueになる場合を確認しました。falseに置き換える実Docker回帰試験も追加しています。単なる137、フラグだけのOOM、証拠欠落、不正形式、カウンター増加なし、タイムアウトは拒否。非root・通信禁止・128MiB・CPU・PID・ファイル制限、未検証時のホスト代替禁止は維持します。
 
 Cloud/LinuxでPython191件成功・実Docker3件skip、別途実Docker21件とフラグ欠落の実Docker追加1件が成功。Web16件、Ruff・mypy・TypeScript・Vite成功。今回Web/E2E経路の変更はありません。Actionsでの成否はCloudでの成功と区別して確認します。
+
+### 回答時間の分析と進捗配信の負荷削減（2026-10-13）
+
+ユーザーより前回修正のActions完了連絡を受領。以降の独立した実装として、指示書9章の平均・直近時間と安定時のみの残り時間推定を追加しました。直近20件以内の確定結果が10件以上、変動係数0.35以下、直近にエラー/タイムアウト/採点不可なし、かつ実行中の場合に限定します。待機列・一時停止・保存時間を含まない回答処理時間であり、完了予定時刻や統計的保証ではありません。画面・Markdown・集計JSONに条件/非表示理由を併記します。再試行後の完了順と問題順のログ表示を両立し、過去試行は重複加算しません。
+
+履歴APIで結果を二重に読み込んでいた経路を修正。SSEは軽量なrevision照会後、変更があるときだけ詳細集計し、同期DB読み込み/集計をイベントループ外で行います。初回/再接続時の最新状態再送と終端イベントは維持。ランのrevisionと結果は1つのSQLite読取スナップショットで取得します。無変更時の再集計抑止、ワーカースレッドでの実行、終端配信、履歴の1回読取をテストしました。
+
+Cloud/LinuxでPython195件成功・実Docker3件skip、Web16件、E2E4件、Ruff・mypy・TypeScript・Vite成功。今回の変更後のWindows実行は未確認です。隔離実装は変更していません。

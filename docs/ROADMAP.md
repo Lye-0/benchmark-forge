@@ -39,3 +39,5 @@ Windows共通基盤・PowerShell・CUDA extra・Docker状態診断・Windows/Lin
 Intel/NVIDIA併用Windows構成の検出と、任意のGPU全体単発計測（使用率・メモリ・電力・温度）を追加。連続サンプリング・モデル別Peakは未実装。RTX 5070 Laptop実機で構成・単発計測の取得成功をユーザー報告で確認済み。Windows/Linux CIの進捗取得・Docker診断の不安定要因へ対処し、更新後のCI結果を確認する段階。
 
 OOM実検証はDocker状態フラグからcgroupのOOMカウンター増加と子プロセス終了の照合へ変更。実機構成や制限を緩めず、Actionsでの再検証を行う。
+
+前回修正のActions完了をユーザー報告で受領。回答処理時間の平均・安定時のみの残り時間推定、履歴の二重読取解消、revision更新時のみのSSE集計を追加済み。

@@ -8,6 +8,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -262,7 +263,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @app.get("/api/runs")
     def runs():
-        return [summarize(store, r["id"], detail=False) for r in store.runs()]
+        return [summarize(store, id, detail=False) for id in store.run_ids()]
 
     @app.get("/api/runs/{run_id}")
     def run_detail(run_id: str):
@@ -275,22 +276,23 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @app.get("/api/runs/{run_id}/events")
     async def events(run_id: str, request: Request):
-        store.run(run_id)
+        await run_in_threadpool(store.run_revision, run_id)
 
         async def stream():
             revision = -1  # Always replay the latest durable snapshot on reconnect.
             heartbeat = 0
             while not await request.is_disconnected():
-                report = summarize(store, run_id, detail=False)
-                if report["revision"] != revision:
+                latest = await run_in_threadpool(store.run_revision, run_id)
+                if latest != revision:
+                    report = await run_in_threadpool(summarize, store, run_id, detail=False)
                     revision = report["revision"]
                     yield f"id: {revision}\nevent: progress\ndata: {json.dumps(report, ensure_ascii=False)}\n\n"
+                    if report["status"] in {"completed", "cancelled"}:
+                        break
                 else:
                     heartbeat += 1
                     if heartbeat % 40 == 0:
                         yield ": heartbeat\n\n"
-                if report["status"] in {"completed", "cancelled"}:
-                    break
                 await asyncio.sleep(0.25)
 
         return StreamingResponse(

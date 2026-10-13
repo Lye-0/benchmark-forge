@@ -168,3 +168,62 @@ def test_cli_private_and_independent_sets(tmp_path, monkeypatch):
     model = tmp_path / "model.json"
     model.write_text(json.dumps({"model_id": "cli-model", "name": "CLI", "backend": "mock"}))
     assert runner.invoke(cli, ["model-register", str(model)]).exit_code == 0
+
+
+async def test_sse_replays_snapshot_skips_unchanged_revisions_and_offloads_reads(
+    store, frozen, monkeypatch
+):
+    import threading
+    from types import SimpleNamespace
+
+    from llm_benchmark import api as api_module
+
+    run_id = store.create_run(frozen.set_id, store.get_model("mock-reference"))
+    store.status(run_id, "paused")
+    application = create_app(store.path.parent)
+    route = next(
+        r for r in application.routes if getattr(r, "path", "") == "/api/runs/{run_id}/events"
+    )
+    original = api_module.summarize
+    calls = []
+    main_thread = threading.get_ident()
+
+    def summarize(*args, **kwargs):
+        assert threading.get_ident() != main_thread
+        calls.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(api_module, "summarize", summarize)
+    polls = 0
+
+    async def is_disconnected():
+        nonlocal polls
+        polls += 1
+        if polls == 4:
+            store.status(run_id, "completed")
+        return polls > 5
+
+    response = await route.endpoint(run_id, SimpleNamespace(is_disconnected=is_disconnected))
+    frames = [frame async for frame in response.body_iterator]
+    assert len(frames) == 2
+    assert len(calls) == 2  # Initial replay + changed terminal snapshot; no idle recomputations.
+    assert '"status": "paused"' in frames[0]
+    assert '"status": "completed"' in frames[1]
+
+
+def test_run_listing_loads_each_result_set_once(store, frozen, monkeypatch):
+    from llm_benchmark.storage import Store
+
+    run_id = store.create_run(frozen.set_id, store.get_model("mock-reference"))
+    original = Store.run
+    reads = []
+
+    def counted(self, id):
+        reads.append(id)
+        return original(self, id)
+
+    with TestClient(create_app(store.path.parent), base_url="http://127.0.0.1") as client:
+        monkeypatch.setattr(Store, "run", counted)
+        response = client.get("/api/runs")
+    assert response.status_code == 200
+    assert reads == [run_id]

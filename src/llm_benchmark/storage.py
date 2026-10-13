@@ -160,27 +160,41 @@ class Store:
 
     def run(self, id: str) -> dict:
         with self.connection() as con:
+            con.execute("BEGIN")
             row = con.execute("SELECT * FROM runs WHERE id=?", (id,)).fetchone()
             if row is None:
                 raise KeyError("ランが見つかりません")
             results = [
                 Result.model_validate_json(r[0])
-                for r in con.execute("SELECT data FROM results WHERE run_id=? ORDER BY idx", (id,))
+                for r in con.execute(
+                    "SELECT data FROM results WHERE run_id=? ORDER BY rowid", (id,)
+                )
             ]
         return {
             **dict(row),
             "model": json.loads(row["model"]),
             "environment": json.loads(row["environment"]),
-            "results": results,
+            "results": sorted(results, key=lambda result: result.index),
+            "_recent_results": results[-20:],
         }
 
-    def runs(self) -> list[dict]:
+    def run_ids(self) -> list[str]:
         with self.connection() as con:
             ids = [
                 row[0]
                 for row in con.execute("SELECT id FROM runs ORDER BY created_at DESC LIMIT 200")
             ]
-        return [self.run(id) for id in ids]
+        return ids
+
+    def runs(self) -> list[dict]:
+        return [self.run(id) for id in self.run_ids()]
+
+    def run_revision(self, id: str) -> int:
+        with self.connection() as con:
+            row = con.execute("SELECT revision FROM runs WHERE id=?", (id,)).fetchone()
+            if row is None:
+                raise KeyError("ランが見つかりません")
+            return row[0]
 
     def status(self, id: str, status: str):
         with self.connection() as con:

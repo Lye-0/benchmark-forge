@@ -5,7 +5,12 @@ from contextlib import suppress
 from typing import BinaryIO, Literal
 
 from llm_benchmark.adapters import AdapterError, capabilities, make_adapter
-from llm_benchmark.analysis import difficulty_estimate, output_summary, resource_summary
+from llm_benchmark.analysis import (
+    difficulty_estimate,
+    output_summary,
+    resource_summary,
+    timing_summary,
+)
 from llm_benchmark.domain import ModelConfig, Result
 from llm_benchmark.grading import grade
 from llm_benchmark.platform_support import acquire_lock, release_lock
@@ -82,7 +87,7 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
         )
     latencies = [r.latency_seconds for r in results]
     report = {
-        **{k: v for k, v in run.items() if k != "results"},
+        **{k: v for k, v in run.items() if k not in {"results", "_recent_results"}},
         "set_hash": frozen.set_hash,
         "set_metadata": frozen.metadata,
         "profile_version": frozen.profile_version,
@@ -114,6 +119,7 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
         "latency_p50": percentile(latencies, 0.5),
         "latency_p95": percentile(latencies, 0.95),
         "answer_time_seconds": sum(latencies),
+        "timing": timing_summary(results, run["_recent_results"], total, run["status"]),
         "provisional": run["status"] != "completed",
         "test_only": run["model"]["backend"] == "mock",
         "warnings": frozen.warnings,

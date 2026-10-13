@@ -111,3 +111,74 @@ def test_output_diagnostics_preserve_scores_and_exclude_attempt_history(store, f
     # Older exported reports can still be rendered without recorded diagnostics.
     del report["output_diagnostics"]
     assert "出力上限による終了: N/A" in export_report(report, "markdown")[0]
+
+
+def test_remaining_time_requires_stable_completed_observations():
+    from llm_benchmark.analysis import timing_summary
+
+    def rows(values, status="correct"):
+        return [
+            Result(
+                index=i,
+                problem_id=f"p-{i}",
+                status=status,
+                correct=status == "correct",
+                answer="fixture",
+                reason="fixture",
+                latency_seconds=value,
+            )
+            for i, value in enumerate(values)
+        ]
+
+    stable = rows([10] * 20)
+    result = timing_summary(stable, stable, 30, "running")
+    assert result["mean_seconds"] == 10
+    assert result["remaining_answer_seconds"] == 100
+    assert result["coefficient_of_variation"] == 0
+    for status in ("queued", "paused", "pausing", "completed", "cancelled"):
+        assert timing_summary(stable, stable, 30, status)["remaining_answer_seconds"] is None
+    for values in ([10] * 9, [1] * 19 + [100], [0] * 20):
+        sample = rows(values)
+        assert timing_summary(sample, sample, 30, "running")["remaining_answer_seconds"] is None
+    failures = rows([10] * 20, "timeout")
+    assert timing_summary(failures, failures, 30, "running")["remaining_answer_seconds"] is None
+
+
+def test_recent_time_uses_completion_order_after_retry_and_preserves_log_order(store, frozen):
+    from llm_benchmark.reports import export_report
+
+    run_id = store.create_run(frozen.set_id, store.get_model("mock-reference"))
+    for index in range(20):
+        store.save_result(
+            run_id,
+            Result(
+                index=index,
+                problem_id=frozen.problems[index].problem_id,
+                status="error" if index == 0 else "correct",
+                correct=index != 0,
+                answer="fixture",
+                reason="fixture",
+                latency_seconds=10,
+            ),
+        )
+    store.retry_failed(run_id)
+    store.save_result(
+        run_id,
+        Result(
+            index=0,
+            problem_id=frozen.problems[0].problem_id,
+            status="correct",
+            correct=True,
+            answer="fixture",
+            reason="fixture",
+            latency_seconds=100,
+        ),
+    )
+    saved = store.run(run_id)
+    assert saved["_recent_results"][-1].index == 0
+    assert [r.index for r in saved["results"]] == list(range(20))
+    report = summarize(store, run_id)
+    assert "_recent_results" not in report
+    assert report["timing"]["recent_samples"] == 20
+    assert report["timing"]["mean_seconds"] == 14.5
+    assert "残り回答処理時間の推定: N/A" in export_report(report, "markdown")[0]

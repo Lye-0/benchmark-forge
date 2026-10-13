@@ -88,3 +88,40 @@ def output_summary(results: list) -> dict:
             r.metrics.get("done_reason") in ("stop", "length") for r in results
         ),
     }
+
+
+def timing_summary(results: list, recent: list, total: int, status: str) -> dict:
+    """Predict remaining answer work only, never a wall-clock completion deadline."""
+    import math
+    import statistics
+
+    values = [r.latency_seconds for r in recent]
+    valid = bool(values) and all(math.isfinite(v) and v > 0 for v in values)
+    average = statistics.mean(values) if valid else None
+    variation = statistics.pstdev(values) / average if average else None
+    output = {
+        "mean_seconds": statistics.mean(r.latency_seconds for r in results) if results else None,
+        "recent_mean_seconds": average,
+        "recent_samples": len(values),
+        "remaining_answer_seconds": None,
+        "coefficient_of_variation": variation,
+        "minimum_samples": 10,
+        "maximum_cv": 0.35,
+        "scope": "直近20件以内の確定結果から推定した回答処理時間。待機列・一時停止・保存時間を除外し、処理中の1問は全時間を見込みます。完了予定時刻ではありません。",
+        "reason": None,
+    }
+    if status != "running":
+        output["reason"] = "実行中のランのみ残り時間を推定します"
+    elif len(values) < 10:
+        output["reason"] = "確定結果が10件未満のため推定しません"
+    elif any(r.status in {"error", "timeout", "ungradable"} for r in recent):
+        output["reason"] = "直近にエラー・タイムアウト・採点不可があるため推定しません"
+    elif not valid or variation is None or variation > 0.35:
+        output["reason"] = "直近の回答時間が不安定なため推定しません"
+    else:
+        assert average is not None
+        output["remaining_answer_seconds"] = average * max(0, total - len(results))
+        output["reason"] = (
+            "直近の平均時間が続くと仮定した参考値です。残りの問題の難しさや回答長によって変わります"
+        )
+    return output

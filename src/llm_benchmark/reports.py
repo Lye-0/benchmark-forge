@@ -109,6 +109,20 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
             "| Origin | 正解 | 問題数 | 正答率 |",
             "|---|---:|---:|---:|",
         ]
+        timing = report.get("timing")
+        if timing:
+            timing_lines = ["", "回答処理時間（参考）:"]
+            for key, label in (
+                ("mean_seconds", "全確定結果の平均"),
+                ("recent_mean_seconds", "直近の平均"),
+                ("remaining_answer_seconds", "残り回答処理時間の推定"),
+            ):
+                value = timing.get(key)
+                formatted = f"{value:.3f} s" if value is not None else "N/A"
+                timing_lines.append(f"- {label}: {formatted}")
+            timing_lines.extend([timing["scope"], timing["reason"], ""])
+            # Insert before the origin table rather than breaking its rows.
+            lines[-2:-2] = timing_lines
         for origin, group in report["by_origin"].items():
             accuracy = f"{group['accuracy']:.1%}" if group["accuracy"] is not None else "N/A"
             lines.append(f"| {origin} | {group['correct']} | {group['total']} | {accuracy} |")
