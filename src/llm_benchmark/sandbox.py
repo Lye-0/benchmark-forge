@@ -145,18 +145,30 @@ class DockerSandbox:
                 or host["CapDrop"] != ["ALL"]
             ):
                 raise IsolationUnavailable("コンテナの実設定が制約と一致しません")
+            deadline = asyncio.get_running_loop().time() + seconds
             try:
                 rc, output = await command(
                     "start", "-a", "-i", name, input=code.encode(), timeout=seconds
                 )
+                # Attachment EOF can precede Docker publishing the final state.
+                # Await termination explicitly before interpreting OOMKilled/ExitCode.
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    return CodeResult("timeout", "", None)
+                wait_rc, exit_raw = await command("wait", name, timeout=remaining)
+                if wait_rc:
+                    raise IsolationUnavailable("隔離ワーカーの終了を確認できません")
             except TimeoutError:
                 return CodeResult("timeout", "", None)
             except ValueError:
                 return CodeResult("output_limit", "", None)
+            exit_code = int(exit_raw.strip())
             _, raw = await command("inspect", "--format", "{{json .State}}", name)
             state = json.loads(raw)
+            if state["Running"] or state["ExitCode"] != exit_code:
+                raise IsolationUnavailable("隔離ワーカーの終了状態が一致しません")
             return CodeResult(
-                "oom" if state["OOMKilled"] else "ok" if rc == 0 else "error",
+                "oom" if state["OOMKilled"] else "ok" if exit_code == 0 else "error",
                 output.decode("utf-8", errors="replace"),
                 state["ExitCode"],
             )
@@ -238,10 +250,12 @@ print('isolation-ok')
                 raise IsolationUnavailable(
                     "無権限・通信・ファイル・cgroup制限の実検証に失敗しました"
                 )
-            oom = await self._run("x=bytearray(300*1024*1024)")
+            oom = await self._run("x=bytearray(300*1024*1024)", seconds=10)
             timeout = await self._run("while True: pass", seconds=6)
             if oom.status != "oom" or timeout.status not in {"error", "timeout"}:
-                raise IsolationUnavailable("OOM/CPU時間制限の実検証に失敗しました")
+                raise IsolationUnavailable(
+                    f"OOM/CPU時間制限の実検証に失敗しました（OOM: {oom.status}, exit={oom.exit_code}; CPU: {timeout.status}, exit={timeout.exit_code}）"
+                )
             self.verified = True
             self.state = "verified"
             self.reason = "non-root、通信禁止、read-only、cgroup制限、OOM、時間制限を実検証済み"

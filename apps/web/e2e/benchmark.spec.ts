@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
-import { ProgressWatch, type RunProgress } from './run-progress';
+import { ProgressWatch, waitForRuns, type RunProgress } from './run-progress';
 
 // Capture durable state separately from the DOM, and prevent a failed test's queued
 // runs from delaying unrelated tests. This server/DB is exclusive to this suite.
@@ -48,13 +48,13 @@ test('browser configuration → frozen set → run → logs → comparison', asy
   await expect(page.getByRole('button', { name: '再開', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '再開', exact: true }).click();
   const progress = new ProgressWatch(runIds, Date.now());
-  for (;;) {
+  await waitForRuns(progress, async () => {
     const response = await request.get('/api/runs', { timeout: 5000 });
-    expect(response.ok()).toBeTruthy();
-    const rows = await response.json() as RunProgress[];
-    if (progress.observe(rows, Date.now())) break;
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
+    try {
+      expect(response.ok()).toBeTruthy();
+      return await response.json() as RunProgress[];
+    } finally { await response.dispose(); }
+  });
   // Backend completion must still reach the UI promptly, without a reload.
   await expect(page.getByText('完了', { exact: true })).toBeVisible({ timeout: 5000 });
   await page.getByRole('tab', { name: '問題別ログ' }).click();

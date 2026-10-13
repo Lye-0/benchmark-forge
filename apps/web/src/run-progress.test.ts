@@ -23,3 +23,27 @@ it('fails on unexpected pause or an overall deadline despite incremental progres
   expect(() => watch.observe([row('a', 'running', 12)], 120000)).toThrow('deadline exceeded');
   expect(() => watch.observe([row('a', 'completed', 100)], 120001)).toThrow('deadline exceeded');
 });
+
+it('recovers from one slow progress request without treating it as a run failure', async () => {
+  const { waitForRuns } = await import('../e2e/run-progress');
+  let clock = 0, calls = 0;
+  const timeout = Object.assign(new Error('fixture timeout'), { name: 'TimeoutError' });
+  await waitForRuns(new ProgressWatch(['a'], 0), async () => {
+    calls++;
+    if (calls === 2) { clock += 5000; throw timeout; }
+    return [row('a', calls === 3 ? 'completed' : 'running', calls === 3 ? 100 : 5)];
+  }, () => clock, async ms => { clock += ms; });
+  expect(calls).toBe(3);
+});
+
+it('fails on persistent transport timeouts and does not retry HTTP failures', async () => {
+  const { waitForRuns } = await import('../e2e/run-progress');
+  let clock = 0;
+  await expect(waitForRuns(new ProgressWatch(['a'], 0), async () => {
+    clock += 5000;
+    throw Object.assign(new Error('fixture timeout'), { name: 'TimeoutError' });
+  }, () => clock, async ms => { clock += ms; })).rejects.toThrow('stopped making progress');
+  await expect(waitForRuns(new ProgressWatch(['a'], 0), async () => {
+    throw new Error('HTTP 500');
+  }, () => 0)).rejects.toThrow('HTTP 500');
+});

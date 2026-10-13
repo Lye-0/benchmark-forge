@@ -148,3 +148,60 @@ async def test_engine_diagnostics_fail_closed(monkeypatch, mode, state):
     assert result["state"] == state and not result["available"]
     with pytest.raises(IsolationUnavailable):
         await sandbox.execute("print('never on host')")
+
+
+@pytest.mark.parametrize("mode", ["oom", "error", "inconsistent"])
+async def test_attachment_eof_waits_for_final_container_state(monkeypatch, mode):
+    import json
+
+    ended = False
+    operations = []
+
+    async def fixture(*args, **kwargs):
+        nonlocal ended
+        operations.append(args[0])
+        if args[0] == "inspect" and len(args) == 2:
+            return 0, json.dumps(
+                [
+                    {
+                        "Mounts": [],
+                        "Config": {"User": "65534:65534"},
+                        "HostConfig": {
+                            "Privileged": False,
+                            "NetworkMode": "none",
+                            "PidMode": "",
+                            "ReadonlyRootfs": True,
+                            "Memory": 134217728,
+                            "PidsLimit": 32,
+                            "CapDrop": ["ALL"],
+                        },
+                    }
+                ]
+            ).encode()
+        if args[0] == "wait":
+            assert 0 < kwargs["timeout"] <= 5
+            ended = True
+            return 0, b"137\n" if mode == "oom" else b"42\n"
+        if args[0] == "inspect":
+            return 0, json.dumps(
+                {
+                    "Running": not ended or mode == "inconsistent",
+                    "OOMKilled": ended and mode == "oom",
+                    "ExitCode": (137 if mode == "oom" else 42) if ended else 0,
+                }
+            ).encode()
+        # docker start attachment can finish successfully before the daemon's
+        # terminal state is available; its return code is not the Python exit code.
+        return 0, b""
+
+    monkeypatch.setattr("llm_benchmark.sandbox.command", fixture)
+    sandbox = DockerSandbox()
+    if mode == "inconsistent":
+        with pytest.raises(IsolationUnavailable, match="終了状態"):
+            await sandbox._run("fixture")
+    else:
+        result = await sandbox._run("fixture")
+        assert result.status == mode
+        assert result.exit_code == (137 if mode == "oom" else 42)
+    assert operations.index("wait") > operations.index("start")
+    assert operations[-1] == "rm"

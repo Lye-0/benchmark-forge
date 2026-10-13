@@ -16,10 +16,10 @@
 
 ## 今回実行した検証
 
-- 今回のpytest: **179 passed / 2 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
+- 今回のpytest: **182 passed / 2 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
 - 新規検証: UTF-8分割NDJSON、可視chunkの時刻、終端欠落・過大応答・中止時のclose、モデル申告情報、GPU情報の欠落/異常、別スレッドでの逐次出力、出力中の更新に対するスナップショット整合、gzip既存ファイル保護。HTTP/機器応答はfixtureであり実モデル・GPU検証ではありません。
 - Ruff lint / format、mypy: PASS。
-- Vitest: **14 passed**。TypeScript / Vite: PASS。
+- Vitest: **16 passed**。TypeScript / Vite: PASS。
 - Playwright / system Chromium: **4 passed**。100問2モデルのfreeze・中断再開・比較、390px画面、私有holdout取込、複数ターン評価、専用速度表示。
 - 全24生成器を5難易度×8seedで再生成し、独立したルールソルバーと採点を照合。固定480件を参照照合。整数/浮動小数の等しい難易度でIDが同じになるよう正規化。
 - 1000件の動的セットと1000件の評価結果/試行の一意性。別Pythonプロセスを`os._exit`で異常終了させ、確定済み結果を保持して未終了試行をinterruptedに復元。
@@ -107,3 +107,13 @@ Cloud/Linuxの検証: Python160件成功・実Docker2件skip、Web12件、E2E4�
 設定画面・`forge doctor --gpu`・`diagnose.ps1 -Gpu`にGPU全体の単発計測を追加。使用率・使用メモリ・電力・温度のN/Aを保持し、取得時刻と計測範囲を明示します。モデル単位の帰属、実行中の連続サンプリング/Peak測定は未実装です。ドライバー/CUDA/グローバルPythonの変更は不要で、モデルも実行しません。Windows CIに実PowerShell診断を追加し、GPUがないrunnerでも欠測理由を報告します。診断JSONはASCIIエスケープで文字コード問題を回避します。
 
 Cloud/LinuxでPython179件（実Docker2件skip）、Web14件、E2E4件、型検査・ビルド成功。GPU応答はfixtureで、Windows実機・RTX実測ではありません。実機で`diagnose.ps1 -Gpu`の結果を確認する段階です。
+
+### Windows進捗取得とDocker終了状態の修正（2026-10-13）
+
+ユーザー提供traceでは、進捗取得4回の成功後、5回目のGET `/api/runs`が5秒でタイムアウト。後処理のGETは約2.58秒で成功し、片方79/100、再開待ち10/100を記録しました。画面の「中止」はテスト後処理によるもので、評価停止が最初の失敗ではありません。単発の取得タイムアウトだけを再試行し、15秒間進捗を確認できない場合・全体120秒の期限・HTTPエラー・不正状態の失敗は維持します。取得失敗で進捗時計をリセットしない回帰試験を追加しました。5秒を超えたサーバー/ホスト側遅延の根本要因はtraceだけでは特定できません。
+
+Linux CIのOOM/CPU診断失敗は個別結果が記録されておらず、原因を断定していません。Dockerのattach終了と状態確定の間を考慮し、残り実行時間内で`docker wait`を実行後、終了コードと停止状態をinspectで照合するよう修正しました。CLIの終了コードをPythonの終了コードとみなさず、OOMKilledを確認します。固定OOM診断のホスト待機だけ10秒とし、通常評価の期限・コンテナの128MiB/CPU/権限/通信制限は維持。診断失敗理由にOOM/CPUそれぞれの状態・終了コードを追加しました。
+
+ユーザーの実機診断でIntel UHDとRTX 5070 Laptop GPUを検出し、NVIDIAドライバー591.66、VRAM容量、GPU全体の使用率・使用メモリ・電力・温度の取得成功を確認しました。これは単発の機器診断であり、モデル専用PeakやTorch/CUDA推論の検証ではありません。
+
+修正後のCloud/Linux検証: Python182件成功・通常実行の実Docker2件skip、別途実Docker12件成功、Web16件、E2E4件、Ruff・mypy・TypeScript・Vite成功。新しいWindows/Linux Actions実行結果は未確認です。

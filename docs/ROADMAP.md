@@ -36,4 +36,4 @@ Windows共通基盤・PowerShell・CUDA extra・Docker状態診断・Windows/Lin
 
 `data.join`は回答JSONの構造を明記する1.1.0へ更新。公開固定20問のみ更新し、保存済みセットは旧版を保持。新旧セットの性能を直接比較しない。
 
-Intel/NVIDIA併用Windows構成の検出と、任意のGPU全体単発計測（使用率・メモリ・電力・温度）を追加。連続サンプリング・モデル別Peakは未実装。次はRTX 5070 Laptop実機の診断結果を確認し、欠測原因を絞り込む。
+Intel/NVIDIA併用Windows構成の検出と、任意のGPU全体単発計測（使用率・メモリ・電力・温度）を追加。連続サンプリング・モデル別Peakは未実装。RTX 5070 Laptop実機で構成・単発計測の取得成功をユーザー報告で確認済み。Windows/Linux CIの進捗取得・Docker診断の不安定要因へ対処し、更新後のCI結果を確認する段階。
