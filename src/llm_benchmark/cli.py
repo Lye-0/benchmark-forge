@@ -152,6 +152,36 @@ def archive(run_id: str, output: Path, compress: bool = False):
         raise typer.Exit(1) from exc
 
 
+@app.command("archive-split")
+def archive_split(
+    run_id: str,
+    output: Path,
+    part_mib: int = typer.Option(64, min=1, max=4096),
+    compress: bool = False,
+):
+    """新規フォルダーへ分割JSONLとSHA-256マニフェストを出力。"""
+    from llm_benchmark.archive import split_archive
+
+    try:
+        manifest = split_archive(store(), run_id, output, part_mib * 1024 * 1024, compress)
+        typer.echo(json.dumps({"parts": len(manifest["parts"]), "records": manifest["records"]}))
+    except (OSError, ValueError, KeyError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+
+@app.command("archive-verify")
+def archive_verify(directory: Path):
+    """分割ファイルの欠落・サイズ・SHA-256を検証（真正性や採点の検証ではない）。"""
+    from llm_benchmark.archive import verify_archive
+
+    try:
+        typer.echo(json.dumps(verify_archive(directory), ensure_ascii=False))
+    except (OSError, ValueError, KeyError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+
 @app.command("tool-set")
 def tool_set(mode: str = "native-tools", count: int = 5, seed: int = 42):
     """native-tools / agentの独立セットを作成。"""

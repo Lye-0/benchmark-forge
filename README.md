@@ -146,3 +146,14 @@ uv run --no-sync forge archive RUN_ID archive.jsonl.gz --compress
 ```
 
 `forge-stream-v1`形式で、出力開始時のSQLiteスナップショットを保持します。結果・試行は1件ずつ処理しますが、確定問題セットはメモリに保持します。遅いダウンロード中はWALが拡大する可能性があります。**参照解答や私有問題を含むため、モデル入力に渡したり無条件に公開したりしないでください。** 通常のJSONLレポート形式とは異なります。
+
+大きいアーカイブは、存在しない新規フォルダーを指定して分割出力できます。以下はPowerShellでも同じコマンドです。
+
+```bash
+uv run --no-sync forge archive-split RUN_ID archive-parts --part-mib 64 --compress
+uv run --no-sync forge archive-verify archive-parts
+```
+
+各パートは独立したgzipファイルです。`--compress`を省略するとJSONLになります。サイズは圧縮前のUTF-8バイト数で判定し、JSONの1行を途中で切りません。1レコードが指定サイズを超える場合、そのパートのみ上限を超えます。`manifest.json`の順序で各パートを展開・連結すると単一の`forge-stream-v1`アーカイブになります。
+
+検証は各パートの欠落・保存サイズ・SHA-256を確認します。参照先はフォルダー内の連番ファイルに限定し、内容の真正性や採点の妥当性までは保証しません。既存フォルダーへの出力は拒否します。途中失敗したフォルダーには完成を示す`manifest.json`がなく、不完全な出力として検証に失敗します。再試行には別の新規フォルダーを指定してください。

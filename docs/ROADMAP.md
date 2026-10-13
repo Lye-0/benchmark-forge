@@ -31,3 +31,5 @@ Ollamaの可視テキストchunkによる初回受信計測、CPU/GPU構成の�
 Windows共通基盤・PowerShell・CUDA extra・Docker状態診断・Windows/Linux CIを追加。Windows CI成功とOllama評価完了のユーザー報告を受領。GPU・Desktop・Transformersの確認は残る。Cloudでの型検査/依存解決とWindows実行は区別する。
 
 無回答バッジのサイズを修正。出力上限による終了と無回答の関連を結果画面・ログ・Markdownで明示し、Markdownのモデル/推論条件・結果内訳を拡充済み。終了理由がない結果の原因は推定しない。
+
+分割アーカイブ（JSONL/gzip）とマニフェストによる欠落・SHA-256検証を追加済み。確定セット自体のメモリ削減は引き続き未実装。結果画面に問題形式別・能力タグ別の成績と採点不可の絞り込みを追加済み。
