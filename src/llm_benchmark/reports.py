@@ -126,6 +126,16 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
         for origin, group in report["by_origin"].items():
             accuracy = f"{group['accuracy']:.1%}" if group["accuracy"] is not None else "N/A"
             lines.append(f"| {origin} | {group['correct']} | {group['total']} | {accuracy} |")
+        observations = report.get("environment", {}).get("model_observations", [])
+        if observations:
+            lines += [
+                "",
+                "モデル識別情報（実行区間ごとの観測）:",
+                "```json",
+                json.dumps(observations, ensure_ascii=False, indent=2),
+                "```",
+                "バックエンドの申告情報です。重みファイルの直接検証や各回答時点での不変性を保証しません。",
+            ]
         lines += ["", *[f"- {warning}" for warning in report["warnings"]]]
         return "\n".join(lines) + "\n", "text/markdown"
     raise ValueError("未対応の出力形式です")

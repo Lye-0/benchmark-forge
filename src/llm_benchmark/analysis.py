@@ -47,6 +47,8 @@ def resource_summary(results: list) -> dict:
 
 def calibration_rows(report: dict) -> list[dict]:
     """Export observations, not fitted or asserted empirical difficulty values."""
+    if report.get("model_identity_changed", False):
+        raise ValueError("モデル識別情報が変わったランは校正用データに使用できません")
     if (
         report["test_only"]
         or report["provisional"]

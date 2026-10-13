@@ -137,3 +137,21 @@ async def test_model_capabilities_are_unknown_or_reported_never_live_verified(sh
         assert len(result["template_hash"]) == 64
     else:
         assert result["detected_capabilities"] is None
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [("a" * 64, "a" * 64), ("sha256:" + "B" * 64, "b" * 64), ("bad", None), (None, None)],
+)
+async def test_model_manifest_digest_is_validated(value, expected):
+    def handler(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local:latest", "digest": value}]})
+        return httpx.Response(200, json={})
+
+    result = await OllamaAdapter(
+        ModelConfig(model_id="m", name="m", backend="ollama", model="local"),
+        httpx.MockTransport(handler),
+    ).check()
+    assert result["model_digest"] == expected
+    assert "manifest" in result["digest_scope"]

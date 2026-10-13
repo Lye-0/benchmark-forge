@@ -209,3 +209,104 @@ async def test_worker_metrics_survive_storage_and_report(store, frozen, monkeypa
         assert result["decode_tokens_per_second"] is None
     finally:
         await scheduler.close()
+
+
+async def test_ollama_identity_observation_is_saved_before_answers_and_preserved_on_resume(
+    store, frozen, monkeypatch
+):
+    import httpx
+
+    from llm_benchmark.adapters import OllamaAdapter, mock_solve
+    from llm_benchmark.domain import Response
+    from llm_benchmark.reports import export_report
+
+    digest = "a" * 64
+    check_paths = []
+
+    def handler(request):
+        check_paths.append(request.url.path)
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200, json={"models": [{"name": "fixture:latest", "digest": digest}]}
+            )
+        return httpx.Response(200, json={"template": "fixture-template"})
+
+    model = ModelConfig(model_id="observed", name="fixture", model="fixture", backend="ollama")
+    store.save_model(model)
+    scheduler = Scheduler(store)
+    scheduler.start()
+    id = None
+    paused = False
+
+    class FixtureAdapter(OllamaAdapter):
+        async def complete(self, problem):
+            nonlocal paused
+            assert len(store.run(id)["environment"]["model_observations"]) >= 1
+            if not paused:
+                scheduler.control(id, "pause")
+                paused = True
+            return Response(text=mock_solve(problem.prompt))
+
+    monkeypatch.setattr(
+        "llm_benchmark.runner.make_adapter",
+        lambda config: FixtureAdapter(config, httpx.MockTransport(handler)),
+    )
+    try:
+        id = scheduler.create(frozen.set_id, [model.model_id])[0]
+        await scheduler.queue.join()
+        assert store.run_status(id) == "paused"
+        first = summarize(store, id)
+        assert first["completed"] == 1
+        digest = "b" * 64
+        scheduler.control(id, "resume")
+        await scheduler.queue.join()
+        report = summarize(store, id)
+        observations = report["environment"]["model_observations"]
+        assert [o["model_digest"] for o in observations] == ["a" * 64, "b" * 64]
+        assert [o["completed_before"] for o in observations] == [0, 1]
+        assert check_paths == ["/api/tags", "/api/show"] * 2
+        assert report["correct"] == report["total"]
+        assert report["results"][0]["metrics"]["model_observation_index"] == 0
+        assert report["results"][1]["metrics"]["model_observation_index"] == 1
+        assert report["model_identity_changed"]
+        from llm_benchmark.analysis import calibration_rows
+
+        with pytest.raises(ValueError, match="モデル識別情報"):
+            calibration_rows(report)
+        assert not comparison([first, report])["comparable"]
+        assert "a" * 64 in export_report(report, "markdown")[0]
+    finally:
+        await scheduler.close()
+
+
+async def test_cancel_during_model_observation_keeps_worker_alive(store, frozen, monkeypatch):
+    from llm_benchmark.adapters import OllamaAdapter
+
+    started = asyncio.Event()
+
+    class WaitingAdapter(OllamaAdapter):
+        async def check(self):
+            started.set()
+            await asyncio.Event().wait()
+
+    store.save_model(ModelConfig(model_id="wait", name="fixture", backend="ollama"))
+    original = __import__("llm_benchmark.runner", fromlist=["make_adapter"]).make_adapter
+    monkeypatch.setattr(
+        "llm_benchmark.runner.make_adapter",
+        lambda config: WaitingAdapter(config) if config.backend == "ollama" else original(config),
+    )
+    scheduler = Scheduler(store)
+    scheduler.start()
+    try:
+        id = scheduler.create(frozen.set_id, ["wait"])[0]
+        await started.wait()
+        scheduler.control(id, "cancel")
+        await scheduler.queue.join()
+        assert store.run_status(id) == "cancelled"
+        assert store.run(id)["results"] == []
+        assert "model_observations" not in store.run(id)["environment"]
+        next_id = scheduler.create(frozen.set_id, ["mock-reference"])[0]
+        await scheduler.queue.join()
+        assert store.run_status(next_id) == "completed"
+    finally:
+        await scheduler.close()

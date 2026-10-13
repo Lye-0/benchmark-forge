@@ -202,6 +202,26 @@ def code_set(count: int = 5, seed: int = 42):
     typer.echo(frozen.set_id)
 
 
+@app.command("model-fingerprint")
+def model_fingerprint(path: Path, output: Path):
+    """重みをロードせずSHA-256一覧を新規ファイルへ保存。大きいモデルは時間がかかります。"""
+    from llm_benchmark.fingerprint import fingerprint_model
+
+    try:
+        if output.exists():
+            raise FileExistsError("出力先は既に存在します")
+        if path.is_dir() and output.resolve().is_relative_to(path.resolve()):
+            raise ValueError("マニフェストはモデルディレクトリの外へ保存してください")
+        manifest = fingerprint_model(path)
+        with output.open("x", encoding="utf-8") as file:
+            json.dump(manifest, file, ensure_ascii=False, indent=2)
+            file.write("\n")
+        typer.echo(manifest["manifest_sha256"])
+    except (OSError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+
 @app.command("model-register")
 def model_register(path: Path):
     """ローカルJSON設定からモデルを登録。認証情報は含めない。"""

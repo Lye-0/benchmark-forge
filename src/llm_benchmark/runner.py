@@ -4,7 +4,7 @@ from collections import Counter
 from contextlib import suppress
 from typing import BinaryIO, Literal
 
-from llm_benchmark.adapters import AdapterError, capabilities, make_adapter
+from llm_benchmark.adapters import AdapterError, OllamaAdapter, capabilities, make_adapter
 from llm_benchmark.analysis import (
     difficulty_estimate,
     output_summary,
@@ -125,6 +125,22 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
         "warnings": frozen.warnings,
         "capabilities": capabilities(ModelConfig.model_validate(run["model"])),
     }
+    observations = run["environment"].get("model_observations", [])
+    report["model_identity_changed"] = any(
+        len({item[key] for item in observations if item.get(key)}) > 1
+        for key in ("model_digest", "template_hash")
+    )
+    if report["model_identity_changed"]:
+        report["warnings"] = [
+            *report["warnings"],
+            "実行区間の間でモデルまたはテンプレートの識別情報が変わっています。結果が混在するため直接比較できません。",
+        ]
+    if run["model"].get("backend") == "ollama":
+        if not observations or any(not item.get("model_digest") for item in observations):
+            report["warnings"] = [
+                *report["warnings"],
+                "モデルdigestが未取得の区間があります。同じモデル名でも同じ内容だったかは確認できません。",
+            ]
     if detail:
         report["attempts"] = store.attempts(id)
         report["results"] = [
@@ -144,11 +160,22 @@ def comparison(reports: list[dict]) -> dict:
     )
     if not comparable:
         warnings.append("問題セットまたは採点器が異なるため、能力スコアを直接比較できません。")
+    if any(r.get("model_identity_changed", False) for r in reports):
+        comparable = False
+        warnings.append("実行途中でモデル識別情報が変わったランを含むため直接比較できません。")
     if any(r["test_only"] for r in reports):
         warnings.append("Mock結果はソフトウェア診断です。正式なモデルランキングには含めません。")
     if any(r["provisional"] for r in reports):
         warnings.append("未完了ランを含みます。正答率は暫定値です。")
-    if len({str(r["environment"]) for r in reports}) > 1:
+    if (
+        len(
+            {
+                str({k: v for k, v in r["environment"].items() if k != "model_observations"})
+                for r in reports
+            }
+        )
+        > 1
+    ):
         warnings.append("実行環境が異なります。速度・メモリを直接比較できません。")
     if (
         len(
@@ -262,6 +289,43 @@ class Scheduler:
         frozen = self.store.get_set(run["set_id"])
         config = ModelConfig.model_validate(run["model"])
         adapter = make_adapter(config)
+        observation_index = None
+        if isinstance(adapter, OllamaAdapter):
+            observation_started = time.perf_counter()
+            check = asyncio.create_task(adapter.check())
+            self.active = (id, check)
+            try:
+                observation = await asyncio.wait_for(check, timeout=8)
+            except TimeoutError:
+                observation = {
+                    "status": "unavailable",
+                    "reason": "モデル識別情報の取得がタイムアウトしました",
+                }
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                if current and current.cancelling():
+                    raise
+                return
+            finally:
+                self.active = None
+            observation_index = self.store.record_model_observation(
+                id,
+                {
+                    key: observation.get(key)
+                    for key in (
+                        "status",
+                        "reason",
+                        "model_digest",
+                        "digest_scope",
+                        "template_hash",
+                        "context_length",
+                    )
+                }
+                | {
+                    "metadata_seconds": time.perf_counter() - observation_started,
+                    "completed_before": len(run["results"]),
+                },
+            )
         done = {r.index for r in run["results"]}
         for index, problem in enumerate(frozen.problems):
             status = self.store.run_status(id)
@@ -351,6 +415,8 @@ class Scheduler:
             if self.store.run_status(id) == "cancelled":
                 self.store.end_attempt(attempt, "cancelled")
                 return
+            if observation_index is not None:
+                metrics["model_observation_index"] = observation_index
             self.store.save_result(
                 id,
                 Result(

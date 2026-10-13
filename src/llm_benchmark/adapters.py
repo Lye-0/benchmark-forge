@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import statistics
 import time
 from datetime import datetime, timedelta
@@ -254,6 +255,13 @@ class OllamaAdapter:
                         "reason": "指定モデルが見つかりません",
                         "models": names,
                     }
+                model_digest = selected.get("digest")
+                if isinstance(model_digest, str):
+                    model_digest = model_digest.removeprefix("sha256:").lower()
+                if not isinstance(model_digest, str) or not re.fullmatch(
+                    r"[0-9a-f]{64}", model_digest
+                ):
+                    model_digest = None
                 detected = None
                 template_hash = None
                 context = None
@@ -294,6 +302,8 @@ class OllamaAdapter:
                     "reason": reason,
                     "detected_capabilities": detected,
                     "template_hash": template_hash,
+                    "model_digest": model_digest,
+                    "digest_scope": "Ollamaが報告したモデルmanifestのdigest。重みファイルを直接ハッシュした値ではありません",
                     "context_length": context,
                     "live_verified": False,
                 }

@@ -158,6 +158,23 @@ class Store:
             )
         return id
 
+    def record_model_observation(self, id: str, observation: dict) -> int | None:
+        with self.connection() as con:
+            con.execute("BEGIN IMMEDIATE")
+            row = con.execute("SELECT status,environment FROM runs WHERE id=?", (id,)).fetchone()
+            if row is None:
+                raise KeyError("ランが見つかりません")
+            if row["status"] == "cancelled":
+                return None
+            environment = json.loads(row["environment"])
+            observations = environment.setdefault("model_observations", [])
+            observations.append({**observation, "observed_at": now()})
+            con.execute(
+                "UPDATE runs SET environment=?,updated_at=?,revision=revision+1 WHERE id=?",
+                (canonical(environment), now(), id),
+            )
+            return len(observations) - 1
+
     def run(self, id: str) -> dict:
         with self.connection() as con:
             con.execute("BEGIN")
