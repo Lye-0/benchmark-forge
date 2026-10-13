@@ -90,9 +90,9 @@ td { padding: 15px 12px; color: #b9c4d8; border-bottom: 1px solid #222935; white
 tbody tr:last-child td { border-bottom: 0; }
 td strong { color: #e4eaf6; font-weight: 500; }
 td small { display: block; color: #7c89a1; margin-top: 3px; }
-.empty { text-align: center; padding: 54px 20px; color: #8e9ab2; display: flex; align-items: center; flex-direction: column; gap: 12px; }
-.empty h3 { color: #d3dced; margin: 0; font-size: 14px; font-weight: 500; }
-.empty p { font-size: 12px; }
+.empty-state { text-align: center; padding: 54px 20px; color: #8e9ab2; display: flex; align-items: center; flex-direction: column; gap: 12px; }
+.empty-state h3 { color: #d3dced; margin: 0; font-size: 14px; font-weight: 500; }
+.empty-state p { font-size: 12px; }
 footer { display: flex; justify-content: space-between; gap: 15px; border-top: 1px solid #1e2430; padding: 21px 0 24px; margin-top: 38px; color: #778198; font-size: 9px; }
 .footer-dot { padding: 0 7px; }
 .setup-grid { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 22px; align-items: start; }

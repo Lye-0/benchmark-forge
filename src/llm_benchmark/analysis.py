@@ -73,3 +73,18 @@ def calibration_rows(report: dict) -> list[dict]:
         }
         for row in report["results"]
     ]
+
+
+def output_summary(results: list) -> dict:
+    """Observed backend termination only; never infer hidden reasoning or change scores."""
+    limited = [r for r in results if r.metrics.get("done_reason") == "length"]
+    return {
+        "length_limited": len(limited),
+        "empty_length_limited": sum(r.status == "empty" for r in limited),
+        "empty_other_or_unknown": sum(
+            r.status == "empty" and r.metrics.get("done_reason") != "length" for r in results
+        ),
+        "finish_reason_recorded": sum(
+            r.metrics.get("done_reason") in ("stop", "length") for r in results
+        ),
+    }

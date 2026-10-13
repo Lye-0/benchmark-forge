@@ -51,6 +51,9 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
             writer.writerow(row)
         return output.getvalue(), "text/csv"
     if format == "markdown":
+        model = report.get("model", {})
+        counts = report.get("status_counts", {})
+        diagnostics = report.get("output_diagnostics", {})
         lines = [
             "# Benchmark Forge / Preview",
             "",
@@ -60,6 +63,48 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
             f"カテゴリ均等正答率: {report['accuracy']:.1%}",
             f"処理数: {report['completed']} / {report['total']}",
             f"Mock診断: {'はい（モデル性能ではありません）' if report['test_only'] else 'いいえ'}",
+            "",
+            "モデル・推論条件:",
+            "```json",
+            json.dumps(
+                {
+                    k: model.get(k)
+                    for k in (
+                        "name",
+                        "backend",
+                        "model",
+                        "revision",
+                        "quantization",
+                        "temperature",
+                        "max_tokens",
+                        "timeout_seconds",
+                        "context_length",
+                        "streaming",
+                    )
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            "```",
+            "",
+            f"実行状態: {report.get('status', 'N/A')} / {'暫定' if report.get('provisional', True) else '確定'}",
+            "",
+            "| 結果 | 件数 |",
+            "|---|---:|",
+            *[
+                f"| {label} | {counts.get(key, 0)} |"
+                for key, label in (
+                    ("correct", "正解"),
+                    ("incorrect", "誤答"),
+                    ("empty", "無回答"),
+                    ("timeout", "タイムアウト"),
+                    ("error", "実行エラー"),
+                    ("ungradable", "採点不可"),
+                )
+            ],
+            "",
+            f"出力上限による終了: {diagnostics.get('length_limited', 'N/A')}件 / うち無回答: {diagnostics.get('empty_length_limited', 'N/A')}件",
+            "終了理由が記録された結果のみ集計。思考の内容や上限変更後の正答は推定しません。",
             "",
             "| Origin | 正解 | 問題数 | 正答率 |",
             "|---|---:|---:|---:|",

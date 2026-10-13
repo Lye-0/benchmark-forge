@@ -16,7 +16,7 @@
 
 ## 今回実行した検証
 
-- 今回のpytest: **155 passed / 2 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
+- 今回のpytest: **156 passed / 2 skipped**。Windowsネイティブ対応時に別途`FORGE_TEST_DOCKER=1 pytest tests/test_sandbox.py`は**9 passed**（通常skipする実Docker2件を含む）。
 - 新規検証: UTF-8分割NDJSON、可視chunkの時刻、終端欠落・過大応答・中止時のclose、モデル申告情報、GPU情報の欠落/異常、別スレッドでの逐次出力、出力中の更新に対するスナップショット整合、gzip既存ファイル保護。HTTP/機器応答はfixtureであり実モデル・GPU検証ではありません。
 - Ruff lint / format、mypy: PASS。
 - Vitest: **11 passed**。TypeScript / Vite: PASS。
@@ -44,7 +44,7 @@
 
 ## 利用者側でしか確認できない次の作業
 
-Cloud内のLinux/CPU・Mock・Docker検証を実施しました。次は[Windows手順](WINDOWS.md)でネイティブ起動・OllamaまたはTransformersの実推論・GPU・Docker Desktopを確認してください。通常評価にWSL2は不要です。認証値や私有問題をチャットへ貼る必要はありません。
+Cloud内のLinux/CPU・Mock・Docker検証に加え、ユーザーからWindows CI成功とWindows上のOllama評価完了の報告を受けています。GPU利用の詳細・Transformers実推論・Docker Desktopは未確認です。これらを利用する場合は[Windows手順](WINDOWS.md)で確認してください。通常評価にWSL2は不要です。認証値や私有問題をチャットへ貼る必要はありません。
 
 ## Windowsネイティブ対応の追加（2026-10-12）
 
@@ -75,3 +75,11 @@ Cloud/LinuxでPython155件（Docker2件skip）、Web8件、E2E4件、型検査�
 1問0.1秒の追加遅延を入れた一時Mock診断でも、20秒時点で参照モデル59/100問、他方100/100問、30秒時点で両方100/100問となる正常な進行を再現しました。製品の評価順序・問題数・保存の耐久性は変更していません。
 
 E2Eは選択した2ランの進行を確認し、15秒間進展なし・予期しない一時停止/中止・全体120秒超で明示的に失敗します。バックエンド完了後の画面反映は5秒以内を別途検証します。待機キュー、停止検出、総期限の3件の単体テストを追加。失敗時の最小進捗情報はログと独立した`durable-run-progress.json`にも保存し、trace.zipを展開しなくても確認できるようにしました。修正後のWindows CI結果は未確認です。
+
+### 無回答バッジと出力終了理由の表示（2026-10-13）
+
+無回答の状態クラス`empty`と空画面レイアウトのクラス名が衝突し、大きな余白が付いていたため、空画面側を`empty-state`へ分離。実Chromiumで正解・不正解・無回答の高さが同一になることを確認しました。
+
+結果画面・個別ログ・Markdownにバックエンドが明示した`done_reason=length`による終了を表示。上限終了全体と、そのうち無回答の件数を区別します。トークン数だけから原因を推定せず、記録のない過去結果は不明として扱います。集計は現在の問題別結果のみを対象とし、再試行履歴を重複計上しません。採点・正答率は変更しません。Markdownにはモデル・推論条件、状態、正解/誤答/無回答/タイムアウト/エラー/採点不可の内訳も追加しました。
+
+Cloud/LinuxでPython156件（実Docker2件skip）、Web11件、E2E4件、Ruff・型検査・ビルドが成功。今回の変更後のWindows実行は未検証です。以前のWindows CIはユーザーから成功報告を受領済み。提供されたOllama実行ログも実評価の証拠として確認済みで、ユーザーの回答ログはリポジトリへ保存していません。

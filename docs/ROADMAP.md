@@ -14,7 +14,7 @@
 
 ## 次の確認が必要な領域
 
-1. ユーザーのWindowsネイティブ環境（Linux/WSL2も継続対応）で実モデルを用意し、ローカル推論とCUDA/ドライバー/メモリを確認。Cloudで実モデル回答を代用しない。
+1. Windows CI成功とWindowsでのOllama評価完了はユーザー報告で確認済み。CUDA/ドライバー/メモリの詳細とTransformers実推論は利用時に確認。Cloudで実モデル回答を代用しない。
 2. Windows Docker DesktopのLinuxコンテナ、またはLinux/WSL2のDocker環境でsandbox-checkを通す。Linuxではrootless推奨。検証が通らない場合は無効のまま、環境差を調査する。
 3. Codex liveは公式preview参加・認証・ツール禁止・正解/秘密の読取隔離が成立した後に検証。Pythonコード隔離と混同しない。
 
@@ -28,4 +28,6 @@
 
 Ollamaの可視テキストchunkによる初回受信計測、CPU/GPU構成の任意取得、全問題/結果/試行のスナップショット逐次アーカイブを追加済み。実機性能の検証とは区別します。
 
-Windows共通基盤・PowerShell・CUDA extra・Docker状態診断・Windows/Linux CIを追加。次にリモートWindows job結果とWindows実機の起動・終了・GPU・Desktopを確認する。Cloudでの型検査/依存解決とWindows実行は区別する。
+Windows共通基盤・PowerShell・CUDA extra・Docker状態診断・Windows/Linux CIを追加。Windows CI成功とOllama評価完了のユーザー報告を受領。GPU・Desktop・Transformersの確認は残る。Cloudでの型検査/依存解決とWindows実行は区別する。
+
+無回答バッジのサイズを修正。出力上限による終了と無回答の関連を結果画面・ログ・Markdownで明示し、Markdownのモデル/推論条件・結果内訳を拡充済み。終了理由がない結果の原因は推定しない。

@@ -22,7 +22,7 @@ const navigation = [
 ];
 
 export function RunTable({ runs, open }: { runs: Run[]; open: (id: string) => void }) {
-  if (!runs.length) return <div className="empty"><ChartNoAxesCombined size={32}/><h3>まだ実行結果がありません</h3><p>問題セットを確定して、最初の診断を始めましょう。</p></div>;
+  if (!runs.length) return <div className="empty-state"><ChartNoAxesCombined size={32}/><h3>まだ実行結果がありません</h3><p>問題セットを確定して、最初の診断を始めましょう。</p></div>;
   return <div className="table-scroll"><table><thead><tr><th>モデル / 実行</th><th>状態</th><th>正答率</th><th>処理数</th><th>日時</th><th><span className="sr-only">詳細</span></th></tr></thead><tbody>{runs.map(run => <tr key={run.id}><td><strong>{run.model.name}</strong><small>{run.id.slice(0, 16)}… {run.test_only && '· Mock診断'}</small></td><td><span className={`badge ${run.status}`}>{statusName[run.status]}</span></td><td><strong className="numeric">{pct(run.accuracy)}</strong>{run.provisional && <small>暫定</small>}</td><td className="numeric">{run.completed} / {run.total}</td><td>{date(run.created_at)}</td><td><button className="icon-button" aria-label={`${run.model.name}の詳細`} onClick={() => open(run.id)}><ArrowRight size={18}/></button></td></tr>)}</tbody></table></div>;
 }
 
@@ -64,7 +64,7 @@ export function App() {
       <header className="topbar"><div><button className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobile(true)}><Menu size={20}/></button><span className="breadcrumb">Workspace <span>/</span> <strong>{title}</strong></span></div><div className="topbar-meta"><span className="badge preview">PREVIEW</span><span className="local-label"><ShieldCheck size={14}/> Local-first</span></div></header>
       <main id="main" tabIndex={-1}>
         {error && <div role="alert" className="error-banner"><span>{error}</span><button aria-label="エラーを閉じる" className="icon-button" onClick={() => setError('')}><X size={16}/></button></div>}
-        {loading ? <div className="empty"><Activity size={28}/><p>ワークスペースを読み込み中…</p></div> : !registry ? <div className="empty"><h2>APIに接続できません</h2><p>バックエンドの起動状態を確認してください。</p><button className="primary" onClick={() => void refresh()}>再接続</button></div> : <>
+        {loading ? <div className="empty-state"><Activity size={28}/><p>ワークスペースを読み込み中…</p></div> : !registry ? <div className="empty-state"><h2>APIに接続できません</h2><p>バックエンドの起動状態を確認してください。</p><button className="primary" onClick={() => void refresh()}>再接続</button></div> : <>
           {page === 'dashboard' && <>
             <div className="page-heading"><div><div className="eyebrow">YOUR RESEARCH WORKSPACE</div><h1>ベンチマークを、確かな比較へ。</h1><p>生成から評価、分析まで。再現可能なLLM評価のワークスペース。</p></div><button className="primary" onClick={() => navigate('new')}><Plus size={18}/> 新しいベンチマーク</button></div>
             <div className="stats-grid"><Stat icon={<Cpu size={19}/>} label="登録モデル" value={String(models.length)} note="Mockを含む / 実モデルは接続確認が必要"/><Stat icon={<Boxes size={19}/>} label="検証済み生成器" value={String(registry.generator_count)} note="LLMを使わない決定的生成"/><Stat icon={<ChartNoAxesCombined size={19}/>} label="カテゴリカバレッジ" value={`${registry.covered_categories}`} suffix="/ 16" note="未対応の分野は代替しません"/><Stat icon={<CheckCircle2 size={19}/>} label="完了したラン" value={String(runs.filter(r => r.status === 'completed').length)} note="診断とモデル評価を区別して保存"/></div>

@@ -41,7 +41,7 @@ export function RunDetail({ id, registry, onError, refresh }: { id: string; regi
   useEffect(() => {
     if (tab === 'details') void api<Run>(`/runs/${id}`).then(value => setRun(old => mergeSnapshot(old, value))).catch(e => onError((e as Error).message));
   }, [tab, id, onError]);
-  if (!run) return <div className="empty">実行結果を読み込み中…</div>;
+  if (!run) return <div className="empty-state">実行結果を読み込み中…</div>;
   const active = ['queued', 'running', 'pausing'].includes(run.status);
   const categoryName = (id: string) => registry.categories.find(c => c.id === id)?.name || id;
   const progress = run.completed / run.total * 100;
@@ -55,6 +55,7 @@ export function RunDetail({ id, registry, onError, refresh }: { id: string; regi
     </div></div>
     {run.test_only && <div className="inline-note prominent">Mock診断 — ソフトウェアの動作確認用です。LLMの性能値・モデルランキングには含めません。</div>}
     {run.provisional && <section className="panel progress-panel"><div><strong>{run.completed} / {run.total} 問を処理</strong><span>{progress.toFixed(0)}% · {connection}</span></div><div className="progress-track" role="progressbar" aria-label="評価進捗" aria-valuenow={run.completed} aria-valuemin={0} aria-valuemax={run.total}><span style={{ width: `${progress}%` }}/></div><p>正答率は全割当問題を分母とする暫定値です。一時停止・中止は現在の回答処理が終了してから反映されます。</p></section>}
+    {!!run.output_diagnostics?.length_limited && <p className="warning" role="note">出力上限による終了: {run.output_diagnostics.length_limited}件（うち無回答: {run.output_diagnostics.empty_length_limited}件）。バックエンドの終了理由に基づく集計です。思考の内容や、上限を増やした場合の正答は判断できません。</p>}
     <div className="tabs" role="tablist" aria-label="結果表示">{[['overview', '概要・分析'], ['details', '問題別ログ'], ['config', '実行条件']].map(([id, label]) => <button key={id} id={`tab-${id}`} role="tab" aria-selected={tab === id} aria-controls={`panel-${id}`} onClick={() => setTab(id)}>{label}</button>)}</div>
     <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
     {tab === 'overview' && <>

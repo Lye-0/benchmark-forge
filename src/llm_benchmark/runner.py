@@ -5,7 +5,7 @@ from contextlib import suppress
 from typing import BinaryIO, Literal
 
 from llm_benchmark.adapters import AdapterError, capabilities, make_adapter
-from llm_benchmark.analysis import difficulty_estimate, resource_summary
+from llm_benchmark.analysis import difficulty_estimate, output_summary, resource_summary
 from llm_benchmark.domain import ModelConfig, Result
 from llm_benchmark.grading import grade
 from llm_benchmark.platform_support import acquire_lock, release_lock
@@ -94,6 +94,7 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
         "micro_accuracy": correct / total,
         "completion_rate": sum(r.status in {"correct", "incorrect"} for r in results) / total,
         "status_counts": dict(status),
+        "output_diagnostics": output_summary(results),
         "by_origin": by_origin,
         "by_category": by_category,
         "by_difficulty": by_difficulty,

@@ -64,3 +64,50 @@ def test_calibration_observations_exclude_mock_and_preserve_lineage(store, froze
     assert rows[0]["set_hash"] == frozen.set_hash
     assert rows[0]["status"] == "error"
     assert rows[0]["attempt_count"] == 1
+
+
+def test_output_diagnostics_preserve_scores_and_exclude_attempt_history(store, frozen):
+    from llm_benchmark.reports import export_report
+
+    run_id = store.create_run(frozen.set_id, store.get_model("mock-reference"))
+    cases = [
+        ("empty", {"done_reason": "length", "output_tokens": 4096}),
+        ("correct", {"done_reason": "length"}),
+        ("empty", {"output_tokens": 4096}),
+        ("empty", {"done_reason": "stop"}),
+        ("incorrect", {"done_reason": "unknown"}),
+    ]
+    for index, (status, metrics) in enumerate(cases):
+        result = Result(
+            index=index,
+            problem_id=frozen.problems[index].problem_id,
+            status=status,
+            correct=status == "correct",
+            answer="answer" if status != "empty" else "",
+            reason="fixture",
+            latency_seconds=1,
+            metrics=metrics,
+        )
+        store.save_result(run_id, result)
+        if index == 0:
+            store.save_result(run_id, result)
+    report = summarize(store, run_id)
+    assert report["completed"] == 5
+    assert report["correct"] == 1
+    assert report["status_counts"]["empty"] == 3
+    assert report["output_diagnostics"] == {
+        "length_limited": 2,
+        "empty_length_limited": 1,
+        "empty_other_or_unknown": 2,
+        "finish_reason_recorded": 3,
+    }
+    markdown, mime = export_report(report, "markdown")
+    assert mime == "text/markdown"
+    assert "出力上限による終了: 2件 / うち無回答: 1件" in markdown
+    assert "| 無回答 | 3 |" in markdown
+    assert '"max_tokens":' in markdown
+    assert report["model"]["name"] in markdown
+    assert "暫定" in markdown
+    # Older exported reports can still be rendered without recorded diagnostics.
+    del report["output_diagnostics"]
+    assert "出力上限による終了: N/A" in export_report(report, "markdown")[0]
