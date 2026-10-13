@@ -12,6 +12,7 @@ from llm_benchmark.analysis import (
     timing_summary,
 )
 from llm_benchmark.domain import ModelConfig, Result
+from llm_benchmark.gpu_sampling import GpuSampler
 from llm_benchmark.grading import grade
 from llm_benchmark.platform_support import acquire_lock, release_lock
 from llm_benchmark.storage import Store
@@ -28,8 +29,8 @@ def percentile(values: list[float], p: float) -> float | None:
 
 
 def summarize(store: Store, id: str, detail: bool = True) -> dict:
-    run = store.run(id)
-    frozen = store.get_set(run["set_id"])
+    run = store.run(id, include_payloads=detail)
+    frozen = store.get_set(run["set_id"], metadata_only=not detail)
     results: list[Result] = run["results"]
     by_id = {r.problem_id: r for r in results}
     total = len(frozen.problems)
@@ -90,6 +91,7 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
         **{k: v for k, v in run.items() if k not in {"results", "_recent_results"}},
         "set_hash": frozen.set_hash,
         "set_metadata": frozen.metadata,
+        "config": frozen.config.model_dump(),
         "profile_version": frozen.profile_version,
         "grader_version": frozen.grader_version,
         "total": total,
@@ -187,6 +189,8 @@ def comparison(reports: list[dict]) -> dict:
                     r["model"].get("context_length"),
                     r["model"].get("device"),
                     r["model"].get("streaming", False),
+                    r["model"].get("gpu_sampling", False),
+                    r["model"].get("inference_seed", 0),
                 )
                 for r in reports
             }
@@ -231,7 +235,7 @@ class Scheduler:
             self.lock = None
 
     def create(self, set_id: str, models: list[str]) -> list[str]:
-        frozen = self.store.get_set(set_id)
+        frozen = self.store.get_set(set_id, metadata_only=True)
         if len(models) != len(set(models)):
             raise ValueError("モデルの重複選択はできません")
         if frozen.config.evaluation_mode == "code" and not self.sandbox.verified:
@@ -252,8 +256,7 @@ class Scheduler:
         return ids
 
     def control(self, id: str, action: str):
-        run = self.store.run(id)
-        status = run["status"]
+        status = self.store.run_status(id)
         if action == "pause" and status in {"running", "queued"}:
             self.store.status(id, "pausing" if status == "running" else "paused")
         elif action == "cancel" and status in {"queued", "running", "pausing", "paused"}:
@@ -282,11 +285,11 @@ class Scheduler:
                 self.queue.task_done()
 
     async def execute(self, id: str):
-        run = self.store.run(id)
+        run = self.store.run(id, include_payloads=False)
         if run["status"] != "queued":
             return
         self.store.status(id, "running")
-        frozen = self.store.get_set(run["set_id"])
+        frozen = self.store.set_header(run["set_id"])
         config = ModelConfig.model_validate(run["model"])
         adapter = make_adapter(config)
         observation_index = None
@@ -327,7 +330,7 @@ class Scheduler:
                 },
             )
         done = {r.index for r in run["results"]}
-        for index, problem in enumerate(frozen.problems):
+        for index, problem in enumerate(self.store.iter_problems(run["set_id"])):
             status = self.store.run_status(id)
             if status == "pausing":
                 self.store.status(id, "paused")
@@ -344,12 +347,14 @@ class Scheduler:
             )
             tokens = speed = ttft = None
             metrics = {}
+            sampler = GpuSampler(config.gpu_sampling)
+            sampler.start()
             try:
                 from llm_benchmark.tool_eval import evaluate_tools
 
                 operation = (
-                    evaluate_tools(config, problem, frozen.config.evaluation_mode)
-                    if frozen.config.evaluation_mode in {"native-tools", "agent"}
+                    evaluate_tools(config, problem, frozen["config"]["evaluation_mode"])
+                    if frozen["config"]["evaluation_mode"] in {"native-tools", "agent"}
                     else adapter.complete(problem.public())
                 )
                 pending = asyncio.create_task(operation)
@@ -364,7 +369,7 @@ class Scheduler:
                 ttft = response.ttft_seconds
                 if tokens is not None and response.decode_seconds and response.decode_seconds > 0:
                     speed = tokens / response.decode_seconds
-                if frozen.config.evaluation_mode == "code":
+                if frozen["config"]["evaluation_mode"] == "code":
                     from llm_benchmark.code_eval import harness
 
                     code_task = asyncio.create_task(
@@ -411,6 +416,11 @@ class Scheduler:
                 reason = str(e)
             except Exception:
                 reason = "モデル応答処理に失敗しました（詳細は秘密情報保護のため非表示）"
+            finally:
+                answer_elapsed = time.perf_counter() - start
+                await sampler.close()
+            if config.gpu_sampling:
+                metrics["gpu_sampling"] = sampler.summary()
             # A cancellation during an in-flight request must not write a late answer.
             if self.store.run_status(id) == "cancelled":
                 self.store.end_attempt(attempt, "cancelled")
@@ -426,7 +436,7 @@ class Scheduler:
                     correct=correct,
                     answer=answer,
                     reason=reason,  # type: ignore[arg-type]
-                    latency_seconds=time.perf_counter() - start,
+                    latency_seconds=answer_elapsed,
                     output_tokens=tokens,
                     decode_tokens_per_second=speed,
                     ttft_seconds=ttft,

@@ -58,7 +58,11 @@ test('browser configuration → frozen set → run → logs → comparison', asy
   // Backend completion must still reach the UI promptly, without a reload.
   await expect(page.getByText('完了', { exact: true })).toBeVisible({ timeout: 5000 });
   await page.getByRole('tab', { name: '問題別ログ' }).click();
-  await expect(page.locator('details.problem-log')).toHaveCount(100);
+  await expect(page.locator('details.problem-log')).toHaveCount(50);
+  await expect(page.getByText('1–50 / 100件', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '次の50件' }).click();
+  await expect(page.getByText('51–100 / 100件', { exact: true })).toBeVisible();
+  await expect(page.locator('details.problem-log')).toHaveCount(50);
   await page.locator('details.problem-log').first().locator('summary').first().click();
   await expect(page.getByRole('heading', { name: '参照解答' }).first()).toBeVisible();
   await page.reload();

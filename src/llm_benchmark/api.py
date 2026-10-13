@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -202,6 +202,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             "dynamic_count": sum(p.origin == "dynamic" for p in frozen.problems),
             "warnings": frozen.warnings,
             "duplicate_stats": frozen.duplicate_stats,
+            "generation_quality": frozen.metadata.get("generation_quality"),
             "sample": [p.public().model_dump() for p in frozen.problems[:2]],
         }
 
@@ -266,8 +267,18 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         return [summarize(store, id, detail=False) for id in store.run_ids()]
 
     @app.get("/api/runs/{run_id}")
-    def run_detail(run_id: str):
-        return summarize(store, run_id)
+    def run_detail(run_id: str, detail: bool = True):
+        return summarize(store, run_id, detail=detail)
+
+    @app.get("/api/runs/{run_id}/results")
+    def result_page(
+        run_id: str,
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=50, ge=1, le=100),
+        status: Literal["correct", "incorrect", "timeout", "error", "empty", "ungradable"]
+        | None = None,
+    ):
+        return store.result_page(run_id, offset=offset, limit=limit, status=status)
 
     @app.post("/api/runs/{run_id}/{action}")
     async def control(run_id: str, action: Literal["pause", "resume", "cancel", "retry"]):

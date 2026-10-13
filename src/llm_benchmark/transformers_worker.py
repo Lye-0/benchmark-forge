@@ -49,7 +49,7 @@ def infer(config: ModelConfig, problem: PublicProblem) -> Response:
     if limits and input_length + config.max_tokens > min(limits):
         raise ValueError("Context limit exceeded; never silently truncate a benchmark prompt")
     inputs = {key: value.to(config.device) for key, value in inputs.items()}
-    torch.manual_seed(0)
+    torch.manual_seed(config.inference_seed)
     generation: dict = {"max_new_tokens": config.max_tokens, "do_sample": config.temperature > 0}
     if config.temperature > 0:
         generation["temperature"] = config.temperature

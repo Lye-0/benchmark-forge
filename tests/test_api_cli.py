@@ -117,7 +117,7 @@ def test_user_preset_persistence_and_migration(client):
     db = client.app.state.store
     db.migrate()
     with db.connection() as con:
-        assert con.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert con.execute("PRAGMA user_version").fetchone()[0] == 3
     assert len(db.presets()) == 1
 
 
@@ -218,9 +218,10 @@ def test_run_listing_loads_each_result_set_once(store, frozen, monkeypatch):
     original = Store.run
     reads = []
 
-    def counted(self, id):
+    def counted(self, id, **kwargs):
         reads.append(id)
-        return original(self, id)
+        assert kwargs == {"include_payloads": False}
+        return original(self, id, **kwargs)
 
     with TestClient(create_app(store.path.parent), base_url="http://127.0.0.1") as client:
         monkeypatch.setattr(Store, "run", counted)

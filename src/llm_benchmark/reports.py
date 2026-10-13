@@ -80,6 +80,8 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
                         "timeout_seconds",
                         "context_length",
                         "streaming",
+                        "gpu_sampling",
+                        "inference_seed",
                     )
                 },
                 ensure_ascii=False,
@@ -126,6 +128,18 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
         for origin, group in report["by_origin"].items():
             accuracy = f"{group['accuracy']:.1%}" if group["accuracy"] is not None else "N/A"
             lines.append(f"| {origin} | {group['correct']} | {group['total']} | {accuracy} |")
+        for title, data in (
+            ("問題の生成品質", report.get("set_metadata", {}).get("generation_quality")),
+            ("GPU連続計測（ホスト全体）", report.get("resources", {}).get("gpu_sampling")),
+        ):
+            if data:
+                lines += [
+                    "",
+                    title,
+                    "```json",
+                    json.dumps(data, ensure_ascii=False, indent=2),
+                    "```",
+                ]
         observations = report.get("environment", {}).get("model_observations", [])
         if observations:
             lines += [

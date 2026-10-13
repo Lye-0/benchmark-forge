@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from llm_benchmark.domain import FrozenSet, ModelConfig, Result, canonical
+from llm_benchmark.domain import FrozenSet, ModelConfig, Problem, Result, canonical
 from llm_benchmark.environment import backend_versions, hardware_inventory
 
 
@@ -51,7 +51,7 @@ class Store:
         with self.connection() as con:
             con.execute("PRAGMA journal_mode=WAL")
             version = con.execute("PRAGMA user_version").fetchone()[0]
-            if version > 2:
+            if version > 3:
                 raise RuntimeError("未対応のDB版です。新しいアプリで開いてください")
             if version == 0:
                 con.executescript("""
@@ -76,6 +76,19 @@ class Store:
                         SELECT run_id,idx,1,json_extract(data,'$.status'),data FROM results;
                     PRAGMA user_version=2;
                 """)
+            if version < 3:
+                # All three operations commit together: a failed split leaves v2 intact.
+                con.execute("BEGIN IMMEDIATE")
+                con.execute(
+                    "CREATE TABLE IF NOT EXISTS set_items(set_id TEXT NOT NULL REFERENCES sets(id), idx INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(set_id,idx))"
+                )
+                con.execute(
+                    "INSERT OR IGNORE INTO set_items SELECT sets.id, CAST(item.key AS INTEGER), item.value FROM sets, json_each(sets.data,'$.problems') AS item"
+                )
+                con.execute(
+                    "UPDATE sets SET data=json_remove(data,'$.problems') WHERE json_type(data,'$.problems')='array'"
+                )
+                con.execute("PRAGMA user_version=3")
             for model in DEFAULT_MODELS:
                 con.execute(
                     "INSERT OR IGNORE INTO models VALUES(?,?)",
@@ -84,16 +97,95 @@ class Store:
 
     def save_set(self, value: FrozenSet):
         with self.connection() as con:
-            con.execute(
-                "INSERT OR IGNORE INTO sets VALUES(?,?)", (value.set_id, value.model_dump_json())
-            )
+            inserted = con.execute(
+                "INSERT OR IGNORE INTO sets VALUES(?,?)",
+                (value.set_id, value.model_dump_json(exclude={"problems"})),
+            ).rowcount
+            if inserted:
+                con.executemany(
+                    "INSERT INTO set_items VALUES(?,?,?)",
+                    ((value.set_id, i, p.model_dump_json()) for i, p in enumerate(value.problems)),
+                )
 
-    def get_set(self, id: str) -> FrozenSet:
+    def set_header(self, id: str) -> dict:
         with self.connection() as con:
             row = con.execute("SELECT data FROM sets WHERE id=?", (id,)).fetchone()
         if row is None:
             raise KeyError("問題セットが見つかりません")
-        return FrozenSet.model_validate_json(row[0])
+        return FrozenSet.model_validate({**json.loads(row[0]), "problems": []}).model_dump(
+            exclude={"problems"}
+        )
+
+    def iter_problems(self, id: str, *, metadata_only: bool = False):
+        # Immutable rows, bounded batches, and no read transaction held during inference.
+        projection = (
+            "json_set(data,'$.prompt','','$.answer_spec.expected',NULL,'$.features',json('{}'),'$.simulation',json('{}'))"
+            if metadata_only
+            else "data"
+        )
+        after = -1
+        while True:
+            with self.connection() as con:
+                rows = con.execute(
+                    f"SELECT idx,{projection} FROM set_items WHERE set_id=? AND idx>? ORDER BY idx LIMIT 32",
+                    (id, after),
+                ).fetchall()
+            if not rows:
+                return
+            for row in rows:
+                yield Problem.model_validate_json(row[1])
+            after = rows[-1][0]
+
+    def get_set(self, id: str, *, metadata_only: bool = False) -> FrozenSet:
+        """metadata_only is for aggregation only; omitted payloads must never be re-saved."""
+        return FrozenSet.model_validate(
+            {
+                **self.set_header(id),
+                "problems": list(self.iter_problems(id, metadata_only=metadata_only)),
+            }
+        )
+
+    def result_page(
+        self, id: str, *, offset: int = 0, limit: int = 50, status: str | None = None
+    ) -> dict:
+        if offset < 0 or not 1 <= limit <= 100:
+            raise ValueError("ログ取得範囲が不正です")
+        with self.connection() as con:
+            con.execute("BEGIN")
+            run = con.execute("SELECT set_id,revision FROM runs WHERE id=?", (id,)).fetchone()
+            if run is None:
+                raise KeyError("ランが見つかりません")
+            where = "run_id=?" + (" AND json_extract(data,'$.status')=?" if status else "")
+            parameters = (id, status) if status else (id,)
+            total = con.execute(
+                f"SELECT count(*) FROM results WHERE {where}", parameters
+            ).fetchone()[0]
+            results: list[dict] = []
+            attempts: list[dict] = []
+            for row in con.execute(
+                f"SELECT idx,data FROM results WHERE {where} ORDER BY idx LIMIT ? OFFSET ?",
+                (*parameters, limit, offset),
+            ):
+                problem = con.execute(
+                    "SELECT data FROM set_items WHERE set_id=? AND idx=?",
+                    (run["set_id"], row["idx"]),
+                ).fetchone()
+                results.append({**json.loads(row["data"]), "problem": json.loads(problem[0])})
+                attempts.extend(
+                    {**dict(a), "data": json.loads(a["data"]) if a["data"] else None}
+                    for a in con.execute(
+                        "SELECT * FROM attempts WHERE run_id=? AND idx=? ORDER BY ordinal",
+                        (id, row["idx"]),
+                    )
+                )
+            return {
+                "revision": run["revision"],
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "results": results,
+                "attempts": attempts,
+            }
 
     def models(self) -> list[ModelConfig]:
         with self.connection() as con:
@@ -129,7 +221,8 @@ class Store:
                 "batch_size": 1,
                 "streaming": model.backend == "ollama"
                 and model.streaming
-                and self.get_set(set_id).config.evaluation_mode not in {"native-tools", "agent"},
+                and self.set_header(set_id)["config"]["evaluation_mode"]
+                not in {"native-tools", "agent"},
                 "peak_vram_bytes": None,
                 "peak_ram_bytes": None,
                 "gpu": None,
@@ -141,7 +234,8 @@ class Store:
                 else "backend-managed",
                 "model_file_hash": None,
                 "chat_template": "backend-default",
-                "inference_seed": 0,
+                "inference_seed": model.inference_seed,
+                "gpu_sampling": model.gpu_sampling,
                 "measurement": "E2E wall time",
             }
             con.execute(
@@ -175,16 +269,21 @@ class Store:
             )
             return len(observations) - 1
 
-    def run(self, id: str) -> dict:
+    def run(self, id: str, *, include_payloads: bool = True) -> dict:
         with self.connection() as con:
             con.execute("BEGIN")
             row = con.execute("SELECT * FROM runs WHERE id=?", (id,)).fetchone()
             if row is None:
                 raise KeyError("ランが見つかりません")
+            projection = (
+                "data"
+                if include_payloads
+                else "json_set(json_remove(data,'$.metrics.trace'),'$.answer','','$.reason','')"
+            )
             results = [
                 Result.model_validate_json(r[0])
                 for r in con.execute(
-                    "SELECT data FROM results WHERE run_id=? ORDER BY rowid", (id,)
+                    f"SELECT {projection} FROM results WHERE run_id=? ORDER BY rowid", (id,)
                 )
             ]
         return {
@@ -311,7 +410,7 @@ class Store:
     def iter_export(self, id: str):
         """Consistent SQLite read snapshot. Only one result/attempt is decoded at a time.
 
-        The frozen set is kept in memory; slow consumers retain a WAL read snapshot.
+        Frozen problems are decoded one at a time; slow consumers retain a WAL read snapshot.
         """
         # StreamingResponse advances this generator sequentially across worker threads.
         with self.connection(cross_thread=True) as con:
@@ -319,34 +418,49 @@ class Store:
             row = con.execute("SELECT * FROM runs WHERE id=?", (id,)).fetchone()
             if row is None:
                 raise KeyError("ランが見つかりません")
-            frozen = FrozenSet.model_validate_json(
-                con.execute("SELECT data FROM sets WHERE id=?", (row["set_id"],)).fetchone()[0]
-            )
+            frozen = FrozenSet.model_validate(
+                {
+                    **json.loads(
+                        con.execute(
+                            "SELECT data FROM sets WHERE id=?", (row["set_id"],)
+                        ).fetchone()[0]
+                    ),
+                    "problems": [],
+                }
+            ).model_dump(exclude={"problems"})
+            set_id = row["set_id"]
             header = {
                 **dict(row),
                 "model": json.loads(row["model"]),
                 "environment": json.loads(row["environment"]),
-                "set_hash": frozen.set_hash,
-                "profile_version": frozen.profile_version,
-                "grader_version": frozen.grader_version,
-                "config": frozen.config.model_dump(),
-                "weights": frozen.weights,
-                "set_metadata": frozen.metadata,
-                "warnings": frozen.warnings,
-                "total": len(frozen.problems),
+                "set_hash": frozen["set_hash"],
+                "profile_version": frozen["profile_version"],
+                "grader_version": frozen["grader_version"],
+                "config": frozen["config"],
+                "weights": frozen["weights"],
+                "set_metadata": frozen["metadata"],
+                "warnings": frozen["warnings"],
+                "total": len(frozen["weights"]),
                 "test_only": json.loads(row["model"])["backend"] == "mock",
                 "export_schema": "forge-stream-v1",
             }
             yield {"type": "run", **header}
             # Include the full frozen set even for interrupted/unanswered problems.
-            for index, problem in enumerate(frozen.problems):
-                yield {"type": "problem", "index": index, **problem.model_dump()}
+            for item in con.execute(
+                "SELECT idx,data FROM set_items WHERE set_id=? ORDER BY idx", (set_id,)
+            ):
+                yield {"type": "problem", "index": item["idx"], **json.loads(item["data"])}
             for row in con.execute("SELECT data FROM results WHERE run_id=? ORDER BY idx", (id,)):
                 result = json.loads(row[0])
                 yield {
                     "type": "result",
                     **result,
-                    "problem": frozen.problems[result["index"]].model_dump(),
+                    "problem": json.loads(
+                        con.execute(
+                            "SELECT data FROM set_items WHERE set_id=? AND idx=?",
+                            (set_id, result["index"]),
+                        ).fetchone()[0]
+                    ),
                 }
             for row in con.execute(
                 "SELECT * FROM attempts WHERE run_id=? ORDER BY idx,ordinal", (id,)

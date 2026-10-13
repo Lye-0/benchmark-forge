@@ -109,8 +109,10 @@ def test_inference_contract_without_real_model(tmp_path, monkeypatch):
         "importlib.import_module", lambda name: {"torch": torch, "transformers": transformers}[name]
     )
     result = infer(
-        config(model=str(tmp_path), max_tokens=10), PublicProblem(problem_id="p", prompt="public")
+        config(model=str(tmp_path), max_tokens=10, inference_seed=12345),
+        PublicProblem(problem_id="p", prompt="public"),
     )
+    torch.manual_seed.assert_called_once_with(12345)
     assert result.output_tokens == 2
     assert result.decode_seconds is None and result.ttft_seconds is None
     assert result.metrics["peak_ram_bytes"] > 0

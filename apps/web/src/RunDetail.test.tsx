@@ -49,3 +49,23 @@ it('keeps completion when a resume response fetch arrives late', async () => {
   await act(async () => resumed.resolve(snapshot('queued', 3)));
   expect(screen.getByText('完了', { exact: true })).toBeVisible();
 });
+
+it('requests bounded filtered log pages and ignores late pages after a filter change', async () => {
+  vi.stubGlobal('EventSource', Stream);
+  let oldResolve!: (value: unknown) => void;
+  vi.mocked(api).mockImplementation(path => {
+    if (path.includes('/results') && !path.includes('status=empty')) return new Promise(resolve => { oldResolve = resolve; });
+    if (path.includes('/results')) return Promise.resolve({ total: 0, results: [], attempts: [] });
+    return Promise.resolve(snapshot('completed', 4));
+  });
+  render(<RunDetail id="fixture" registry={registry} onError={vi.fn()} refresh={vi.fn().mockResolvedValue(undefined)}/>);
+  await act(async () => {});
+  await act(async () => fireEvent.click(screen.getByRole('tab', { name: '問題別ログ' })));
+  expect(api).toHaveBeenCalledWith('/runs/fixture/results?offset=0&limit=50');
+  await act(async () => fireEvent.change(screen.getByLabelText('結果を絞り込み'), { target: { value: 'empty' } }));
+  expect(api).toHaveBeenCalledWith('/runs/fixture/results?offset=0&limit=50&status=empty');
+  await act(async () => oldResolve({ total: 9000, results: [], attempts: [] }));
+  expect(screen.getByText('0–0 / 0件')).toBeVisible();
+  expect(screen.queryByText(/9000件/)).toBeNull();
+  expect(screen.getByRole('button', { name: '次の50件' })).toBeDisabled();
+});

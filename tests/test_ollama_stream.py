@@ -155,3 +155,30 @@ async def test_model_manifest_digest_is_validated(value, expected):
     ).check()
     assert result["model_digest"] == expected
     assert "manifest" in result["digest_scope"]
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_explicit_inference_seed_reaches_text_and_tool_requests(streaming):
+    seen = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        seen.append(payload["options"]["seed"])
+        value = {"message": {"content": "fixture"}, "done": True}
+        return (
+            httpx.Response(200, content=wire(value))
+            if payload["stream"]
+            else httpx.Response(200, json=value)
+        )
+
+    config = ModelConfig(
+        model_id="seeded",
+        name="seeded",
+        backend="ollama",
+        streaming=streaming,
+        inference_seed=12345,
+    )
+    adapter = OllamaAdapter(config, httpx.MockTransport(handler))
+    await adapter.complete(PublicProblem(problem_id="p", prompt="public"))
+    await adapter.tool_turn([], [])
+    assert seen == [12345, 12345]

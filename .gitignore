@@ -24,3 +24,6 @@ results/
 auth.json
 credentials.json
 .DS_Store
+
+# Local pre-migration copies contain private results.
+.benchmark-forge-backup-*/

@@ -5,6 +5,7 @@ from importlib.resources import files
 
 from llm_benchmark.domain import FrozenSet, Problem, SetConfig, digest
 from llm_benchmark.generators import REGISTRY
+from llm_benchmark.quality import equivalence_key, quality_report
 
 
 class SetUnavailable(ValueError):
@@ -52,8 +53,9 @@ def build_set(config: SetConfig) -> FrozenSet:
     fixed_indices = set(rng.sample(range(config.count), fixed_count))
     catalogue = fixed_catalogue() if fixed_count else []
     used: set[str] = set()
+    equivalent: set[str] = set()
     problems: list[Problem] = []
-    duplicates = 0
+    duplicates = semantic_duplicates = 0
     for index, g in enumerate(allocations):
         target = (
             config.difficulty_min
@@ -66,6 +68,7 @@ def build_set(config: SetConfig) -> FrozenSet:
                 if p.generator_id == g.id
                 and config.difficulty_min <= p.target_difficulty <= config.difficulty_max
                 and digest(p.prompt) not in used
+                and equivalence_key(p) not in equivalent
             ]
             if not candidates:
                 raise SetUnavailable(
@@ -76,12 +79,16 @@ def build_set(config: SetConfig) -> FrozenSet:
         else:
             for _ in range(100):
                 p = g.generate(rng.randrange(2**32), target)
-                if digest(p.prompt) not in used:
+                if digest(p.prompt) in used:
+                    duplicates += 1
+                elif equivalence_key(p) in equivalent:
+                    semantic_duplicates += 1
+                else:
                     break
-                duplicates += 1
             else:
                 raise SetUnavailable(f"重複を避けて十分な問題を作れません: {g.name}")
         used.add(digest(p.prompt))
+        equivalent.add(equivalence_key(p))
         problems.append(p)
     rng.shuffle(problems)
     categories = sorted({p.category_id for p in problems})
@@ -95,12 +102,16 @@ def build_set(config: SetConfig) -> FrozenSet:
     requested = config.count * config.fixed_ratio
     if fixed_count != requested:
         warnings.append(f"固定問題数を{requested:g}から{fixed_count}へ整数化しました。")
+    quality = quality_report(
+        problems, surface_rejected=duplicates, semantic_rejected=semantic_duplicates
+    )
     payload = {
         "config": config.model_dump(),
         "problems": [p.model_dump() for p in problems],
         "weights": weights,
         "profile_version": "Preview v1",
         "grader_version": "1.0.0",
+        "quality_method": quality["method"],
     }
     hash = digest(payload)
     return FrozenSet(
@@ -112,10 +123,13 @@ def build_set(config: SetConfig) -> FrozenSet:
         warnings=warnings,
         duplicate_stats={
             "surface_rejected": duplicates,
+            "semantic_rejected": semantic_duplicates,
+            "candidate_attempts": len(problems) + duplicates + semantic_duplicates,
             "adopted": len(problems),
             "structures": len({p.template for p in problems}),
             "repeated_structures": len(problems) - len({p.template for p in problems}),
         },
+        metadata={"generation_quality": quality},
         created_at=datetime.now(UTC).isoformat(),
     )
 

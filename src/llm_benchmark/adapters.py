@@ -163,7 +163,7 @@ class OllamaAdapter:
             try:
                 options: dict[str, float | int] = {
                     "temperature": self.config.temperature,
-                    "seed": 0,
+                    "seed": self.config.inference_seed,
                     "num_predict": self.config.max_tokens,
                 }
                 if self.config.context_length is not None:
@@ -205,7 +205,7 @@ class OllamaAdapter:
             try:
                 options = {
                     "temperature": self.config.temperature,
-                    "seed": 0,
+                    "seed": self.config.inference_seed,
                     "num_predict": self.config.max_tokens,
                 }
                 if self.config.context_length is not None:

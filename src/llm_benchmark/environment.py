@@ -238,40 +238,7 @@ def gpu_status() -> dict:
             timeout=8,
             check=True,
         )
-        if len(process.stdout) > 64000:
-            raise ValueError("sample limit")
-        devices = []
-        for row in csv.reader(process.stdout.splitlines()):
-            if len(row) != 6 or not row[0].strip() or not row[1].strip():
-                raise ValueError("invalid sample")
-            values: dict[str, float | None] = {}
-            reasons = {}
-            for key, raw, limit, scale in zip(
-                ("utilization_percent", "used_vram_bytes", "power_watts", "temperature_celsius"),
-                row[2:],
-                (100, None, None, None),
-                (1, 1048576, 1, 1),
-                strict=True,
-            ):
-                raw = raw.strip()
-                if raw in {"N/A", "[N/A]", "[Not Supported]"}:
-                    values[key] = None
-                    reasons[key] = "ドライバーがこの計測値を提供していません"
-                    continue
-                value = float(raw)
-                if not math.isfinite(value) or value < 0 or (limit is not None and value > limit):
-                    raise ValueError("invalid sample value")
-                values[key] = value * scale
-            devices.append(
-                {
-                    "uuid": row[0].strip(),
-                    "name": row[1].strip(),
-                    **values,
-                    "unavailable_reasons": reasons,
-                }
-            )
-        if not devices:
-            raise ValueError("no sample")
+        devices = parse_gpu_sample(process.stdout)
         return {
             **result,
             "available": True,
@@ -283,3 +250,41 @@ def gpu_status() -> dict:
     except (OSError, subprocess.SubprocessError, ValueError):
         result["reason"] = "nvidia-smiの単発計測に失敗しました（ドライバーまたは応答形式）"
     return result
+
+
+def parse_gpu_sample(stdout: str) -> list[dict]:
+    if len(stdout) > 64000:
+        raise ValueError("sample limit")
+    devices = []
+    for row in csv.reader(stdout.splitlines()):
+        if len(row) != 6 or not row[0].strip() or not row[1].strip():
+            raise ValueError("invalid sample")
+        values: dict[str, float | None] = {}
+        reasons = {}
+        for key, raw, limit, scale in zip(
+            ("utilization_percent", "used_vram_bytes", "power_watts", "temperature_celsius"),
+            row[2:],
+            (100, None, None, None),
+            (1, 1048576, 1, 1),
+            strict=True,
+        ):
+            raw = raw.strip()
+            if raw in {"N/A", "[N/A]", "[Not Supported]"}:
+                values[key] = None
+                reasons[key] = "ドライバーがこの計測値を提供していません"
+                continue
+            value = float(raw)
+            if not math.isfinite(value) or value < 0 or (limit is not None and value > limit):
+                raise ValueError("invalid sample value")
+            values[key] = value * scale
+        devices.append(
+            {
+                "uuid": row[0].strip(),
+                "name": row[1].strip(),
+                **values,
+                "unavailable_reasons": reasons,
+            }
+        )
+    if not devices:
+        raise ValueError("no sample")
+    return devices

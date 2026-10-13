@@ -41,6 +41,9 @@ def resource_summary(results: list) -> dict:
         values = [r.metrics[key] for r in results if isinstance(r.metrics.get(key), (int, float))]
         output[key] = max(values) if values else None
         output[key + "_samples"] = len(values)
+    from llm_benchmark.gpu_sampling import summarize_gpu
+
+    output["gpu_sampling"] = summarize_gpu(results)
     output["scope"] = "成功応答のワーカー計測の最大値。失敗時・GPU全体の使用量は含まない"
     return output
 
