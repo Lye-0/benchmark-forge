@@ -27,7 +27,7 @@ class TransformersAdapter:
         self.config = config
 
     async def complete(self, problem: PublicProblem) -> Response:
-        from llm_benchmark.adapters import AdapterError
+        from llm_benchmark.adapters import ExecutionUnavailable
 
         # No inherited credentials, proxy, Python injection variables or automatic downloads.
         env = worker_environment()
@@ -77,7 +77,7 @@ class TransformersAdapter:
         except TimeoutError:
             raise
         except (ValueError, OSError) as exc:
-            raise AdapterError(
+            raise ExecutionUnavailable(
                 "Transformers推論失敗。依存・モデル形式・コンテキスト長・デバイスを確認してください"
             ) from exc
         finally:

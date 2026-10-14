@@ -4,7 +4,13 @@ from collections import Counter
 from contextlib import suppress
 from typing import BinaryIO, Literal
 
-from llm_benchmark.adapters import AdapterError, OllamaAdapter, capabilities, make_adapter
+from llm_benchmark.adapters import (
+    AdapterError,
+    ExecutionUnavailable,
+    OllamaAdapter,
+    capabilities,
+    make_adapter,
+)
 from llm_benchmark.analysis import (
     difficulty_estimate,
     output_summary,
@@ -90,6 +96,9 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
     latencies = [r.latency_seconds for r in results]
     report = {
         **{k: v for k, v in run.items() if k not in {"results", "_recent_results"}},
+        "execution_block": run["environment"].get("execution_block")
+        if run["status"] == "paused"
+        else None,
         "set_hash": frozen.set_hash,
         "set_metadata": frozen.metadata,
         "config": frozen.config.model_dump(),
@@ -192,7 +201,13 @@ def comparison(reports: list[dict]) -> dict:
     if (
         len(
             {
-                str({k: v for k, v in r["environment"].items() if k != "model_observations"})
+                str(
+                    {
+                        k: v
+                        for k, v in r["environment"].items()
+                        if k not in {"model_observations", "execution_block"}
+                    }
+                )
                 for r in reports
             }
         )
@@ -255,13 +270,43 @@ class Scheduler:
             release_lock(self.lock)
             self.lock = None
 
-    def create(self, set_id: str, models: list[str]) -> list[str]:
+    @staticmethod
+    async def check_model(config: ModelConfig):
+        try:
+            adapter = make_adapter(config)
+        except AdapterError as exc:
+            raise ExecutionUnavailable(f"{config.name}: {exc}") from exc
+        if isinstance(adapter, OllamaAdapter):
+            try:
+                observation = await asyncio.wait_for(adapter.check(), timeout=8)
+            except TimeoutError as exc:
+                raise ExecutionUnavailable(
+                    f"{config.name}: Ollamaの接続確認がタイムアウトしました"
+                ) from exc
+            if observation["status"] != "connected":
+                raise ExecutionUnavailable(f"{config.name}: {observation['reason']}")
+
+    async def create_checked(self, set_id: str, models: list[str]) -> list[str]:
+        configs = [self.store.get_model(id) for id in models]
+        for config in configs:
+            await self.check_model(config)
+        return self.create(set_id, models, configs=configs)
+
+    async def control_checked(self, id: str, action: str):
+        if action in {"resume", "retry"}:
+            run = self.store.run(id, include_payloads=False)
+            await self.check_model(ModelConfig.model_validate(run["model"]))
+        self.control(id, action)
+
+    def create(
+        self, set_id: str, models: list[str], *, configs: list[ModelConfig] | None = None
+    ) -> list[str]:
         frozen = self.store.get_set(set_id, metadata_only=True)
         if len(models) != len(set(models)):
             raise ValueError("モデルの重複選択はできません")
         if frozen.config.evaluation_mode == "code" and not self.sandbox.verified:
             raise AdapterError("コード評価の前に隔離検証を実行してください")
-        configs = [self.store.get_model(id) for id in models]
+        configs = configs if configs is not None else [self.store.get_model(id) for id in models]
         for config in configs:
             if (
                 frozen.config.evaluation_mode in {"native-tools", "agent"}
@@ -312,7 +357,9 @@ class Scheduler:
             except asyncio.CancelledError:
                 raise
             except Exception:
-                self.store.status(id, "paused")
+                self.store.pause_unavailable(
+                    id, "評価処理を継続できないため停止しました。実行環境を確認してください"
+                )
             finally:
                 self.processing = None
                 self.queue.task_done()
@@ -362,6 +409,9 @@ class Scheduler:
                     "completed_before": len(run["results"]),
                 },
             )
+            if observation["status"] != "connected":
+                self.store.pause_unavailable(id, observation["reason"])
+                return
         done = {r.index for r in run["results"]}
         for index, problem in enumerate(self.store.iter_problems(run["set_id"])):
             status = self.store.run_status(id)
@@ -375,6 +425,7 @@ class Scheduler:
             attempt = self.store.begin_attempt(id, index)
             start = time.perf_counter()
             answer, reason, correct = "", "", False
+            unavailable = None
             outcome: Literal["correct", "incorrect", "timeout", "error", "empty", "ungradable"] = (
                 "error"
             )
@@ -445,6 +496,8 @@ class Scheduler:
                 raise
             except TimeoutError:
                 outcome, reason = "timeout", "応答タイムアウト"
+            except ExecutionUnavailable as e:
+                unavailable = str(e)
             except AdapterError as e:
                 reason = str(e)
             except Exception:
@@ -452,6 +505,9 @@ class Scheduler:
             finally:
                 answer_elapsed = time.perf_counter() - start
                 await sampler.close()
+            if unavailable is not None:
+                self.store.pause_unavailable(id, unavailable, attempt)
+                return
             if config.gpu_sampling:
                 metrics["gpu_sampling"] = sampler.summary()
             # A cancellation during an in-flight request must not write a late answer.

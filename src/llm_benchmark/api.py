@@ -15,7 +15,13 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import Field
 
-from llm_benchmark.adapters import AdapterError, OllamaAdapter, capabilities, validate_endpoint
+from llm_benchmark.adapters import (
+    AdapterError,
+    ExecutionUnavailable,
+    OllamaAdapter,
+    capabilities,
+    validate_endpoint,
+)
 from llm_benchmark.code_eval import CodeConfig, build_code_set
 from llm_benchmark.domain import ModelConfig, SetConfig, StartRun, StrictModel
 from llm_benchmark.environment import gpu_status, hardware_inventory, torch_status
@@ -118,6 +124,10 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     @app.exception_handler(ValueError)
     async def invalid(request: Request, exc: ValueError):
         return JSONResponse({"detail": str(exc)}, status_code=422)
+
+    @app.exception_handler(ExecutionUnavailable)
+    async def execution_unavailable(request: Request, exc: ExecutionUnavailable):
+        return JSONResponse({"detail": str(exc), "code": "execution_unavailable"}, status_code=409)
 
     @app.exception_handler(AdapterError)
     async def unavailable(request: Request, exc: AdapterError):
@@ -282,7 +292,11 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @app.post("/api/runs")
     async def start_run(value: StartRun):
-        return {"run_ids": scheduler.create(value.set_id, value.model_ids)}
+        return {"run_ids": await scheduler.create_checked(value.set_id, value.model_ids)}
+
+    @app.get("/api/execution-blocks")
+    def execution_blocks():
+        return store.execution_blocks()
 
     @app.get("/api/runs")
     def runs():
@@ -309,7 +323,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @app.post("/api/runs/{run_id}/{action}")
     async def control(run_id: str, action: Literal["pause", "resume", "cancel", "retry"]):
-        scheduler.control(run_id, action)
+        await scheduler.control_checked(run_id, action)
         return summarize(store, run_id, detail=False)
 
     @app.get("/api/runs/{run_id}/events")

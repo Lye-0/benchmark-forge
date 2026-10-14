@@ -68,11 +68,12 @@ export function RunDetail({ id, registry, onError, refresh }: { id: string; regi
   return <>
     <div className="page-heading"><div><div className="eyebrow">{active ? 'RUN IN PROGRESS' : run.status === 'paused' ? 'PAUSED' : 'RESULTS OVERVIEW'}</div><h1>{run.model.name}</h1><p><span className={`badge ${run.status}`}>{statusName[run.status]}</span> {run.id}</p></div><div className="button-row">
       {active && <button className="secondary" disabled={busy || run.status === 'pausing'} onClick={() => void control('pause')}><Pause size={16}/> このモデルを一時停止</button>}
-      {run.status === 'paused' && <button className="primary" disabled={busy} onClick={() => void control('resume')}><Play size={16}/> このモデルを再開</button>}
+      {run.status === 'paused' && <button className="primary" disabled={busy} onClick={() => void control('resume')}><Play size={16}/> {run.execution_block ? '接続を確認して再開' : 'このモデルを再開'}</button>}
       {(active || run.status === 'paused') && <button className="secondary" disabled={busy} onClick={() => void control('cancel')}><Square size={15}/> このモデルを中止</button>}
       {['paused', 'completed'].includes(run.status) && ((run.status_counts.error || 0) + (run.status_counts.timeout || 0) > 0) && <button className="secondary" disabled={busy} onClick={() => void control('retry')}><RotateCcw size={16}/> {run.status === 'paused' ? 'エラー・タイムアウトを再試行して続行' : 'エラー・タイムアウトを再試行'}</button>}
       <a className="secondary" href={`/api/runs/${id}/export/markdown`} download><Download size={16}/> レポート</a>
     </div></div>
+    {run.execution_block && <div role="alert" className="error-banner">実行不能のため自動停止：{run.execution_block.reason} 完了済みの回答は保存されています。</div>}
     {run.test_only && <div className="inline-note prominent">Mock診断 — ソフトウェアの動作確認用です。LLMの性能値・モデルランキングには含めません。</div>}
     {run.response_evidence && <p className="inline-note">{run.response_evidence.reason}。接続確認時点の状態とは別の、このランでの記録です。</p>}
     {run.provisional && <section className="panel progress-panel"><div><strong>{run.completed} / {run.total} 問を処理</strong><span>{progress.toFixed(0)}% · {run.status === 'cancelled' ? '中止時点の結果' : connection}</span></div><div className="progress-track" role="progressbar" aria-label="評価進捗" aria-valuenow={run.completed} aria-valuemin={0} aria-valuemax={run.total}><span style={{ width: `${progress}%` }}/></div><p>正答率は全割当問題を分母とする暫定値です。{run.status !== 'cancelled' && '一時停止は現在の回答処理後に反映され、中止は処理中の要求をキャンセルします。'}</p></section>}

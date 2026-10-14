@@ -19,6 +19,10 @@ class AdapterError(RuntimeError):
     pass
 
 
+class ExecutionUnavailable(AdapterError):
+    """Infrastructure/protocol failure; do not grade or advance the problem."""
+
+
 def validate_endpoint(endpoint: str) -> str:
     url = urlsplit(endpoint)
     # Literal loopback only: no DNS resolution, credentials, redirect or arbitrary egress.
@@ -187,12 +191,14 @@ class OllamaAdapter:
                     if not isinstance(text, str):
                         raise ValueError("invalid response")
                     return finish(text, data)
+            except httpx.ConnectTimeout as e:
+                raise ExecutionUnavailable("Ollamaへの接続がタイムアウトしました") from e
             except httpx.TimeoutException as e:
                 raise TimeoutError("Ollama応答タイムアウト") from e
             except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as e:
                 # Upstream response bodies and URLs can contain secrets: never expose them.
-                raise AdapterError(
-                    "Ollama通信・応答エラー。ローカルサービスとモデル名を確認してください"
+                raise ExecutionUnavailable(
+                    "Ollamaから回答を取得できません。接続・モデル名・モデルのロード状態を確認してください"
                 ) from e
 
     async def tool_turn(self, messages: list[dict], tools: list[dict]) -> dict:
@@ -226,10 +232,14 @@ class OllamaAdapter:
                     raise ValueError("invalid message")
                 # Keep protocol content only, never backend metadata or unexpected fields.
                 return {key: message[key] for key in ("content", "tool_calls") if key in message}
+            except httpx.ConnectTimeout as exc:
+                raise ExecutionUnavailable("Ollamaへの接続がタイムアウトしました") from exc
             except httpx.TimeoutException as exc:
                 raise TimeoutError("Ollamaツール応答タイムアウト") from exc
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-                raise AdapterError("Ollamaのツール通信・応答エラー") from exc
+                raise ExecutionUnavailable(
+                    "Ollamaからツール応答を取得できません。接続・モデルのロード状態を確認してください"
+                ) from exc
 
     async def check(self) -> dict:
         async with httpx.AsyncClient(

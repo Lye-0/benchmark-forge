@@ -334,11 +334,51 @@ class Store:
     def status(self, id: str, status: str):
         with self.connection() as con:
             updated = con.execute(
-                "UPDATE runs SET status=?, updated_at=?, revision=revision+1 WHERE id=?",
-                (status, now(), id),
+                "UPDATE runs SET status=?, environment=CASE WHEN ?='queued' THEN json_remove(environment,'$.execution_block') ELSE environment END, updated_at=?, revision=revision+1 WHERE id=?",
+                (status, status, now(), id),
             )
             if not updated.rowcount:
                 raise KeyError("ランが見つかりません")
+
+    def pause_unavailable(self, id: str, reason: str, attempt: int | None = None):
+        """Persist the stop and interrupted attempt atomically, without a scored result."""
+        with self.connection() as con:
+            con.execute("BEGIN IMMEDIATE")
+            row = con.execute("SELECT status,environment FROM runs WHERE id=?", (id,)).fetchone()
+            if row is None:
+                raise KeyError("ランが見つかりません")
+            if row["status"] not in {"running", "pausing"}:
+                if attempt is not None:
+                    con.execute(
+                        "UPDATE attempts SET status='cancelled',finished_at=? WHERE id=? AND status='running'",
+                        (now(), attempt),
+                    )
+                return
+            environment = json.loads(row["environment"])
+            block = {"reason": reason, "detected_at": now()}
+            environment["execution_block"] = block
+            if attempt is not None:
+                con.execute(
+                    "UPDATE attempts SET status='execution_unavailable',finished_at=?,data=? WHERE id=? AND status='running'",
+                    (now(), canonical(block), attempt),
+                )
+            con.execute(
+                "UPDATE runs SET status='paused',environment=?,updated_at=?,revision=revision+1 WHERE id=?",
+                (canonical(environment), now(), id),
+            )
+
+    def execution_blocks(self) -> list[dict]:
+        with self.connection() as con:
+            return [
+                {
+                    "id": row["id"],
+                    "model_name": json.loads(row["model"])["name"],
+                    **json.loads(row["block"]),
+                }
+                for row in con.execute(
+                    "SELECT id,model,json_extract(environment,'$.execution_block') AS block FROM runs WHERE status='paused' AND json_type(environment,'$.execution_block')='object' ORDER BY updated_at"
+                )
+            ]
 
     def recover(self):
         with self.connection() as con:
@@ -422,7 +462,7 @@ class Store:
             )
 
             con.execute(
-                "UPDATE runs SET status='queued',updated_at=?,revision=revision+1 WHERE id=?",
+                "UPDATE runs SET status='queued',environment=json_remove(environment,'$.execution_block'),updated_at=?,revision=revision+1 WHERE id=?",
                 (now(), id),
             )
 

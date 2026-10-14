@@ -79,7 +79,7 @@ def run(set_id: str, models: str = "mock-reference"):
         try:
             if db.get_set(set_id).config.evaluation_mode == "code":
                 await scheduler.sandbox.verify()
-            ids = scheduler.create(set_id, models.split(","))
+            ids = await scheduler.create_checked(set_id, models.split(","))
             await scheduler.queue.join()
             for id in ids:
                 typer.echo(json.dumps(summarize(db, id, detail=False), ensure_ascii=False))
@@ -253,7 +253,7 @@ def resume(run_id: str, retry: bool = False):
                 check = await scheduler.sandbox.verify()
                 if not check["available"]:
                     raise RuntimeError(check["reason"])
-            scheduler.control(run_id, "retry" if retry else "resume")
+            await scheduler.control_checked(run_id, "retry" if retry else "resume")
             await scheduler.queue.join()
             typer.echo(json.dumps(summarize(db, run_id, detail=False), ensure_ascii=False))
         finally:

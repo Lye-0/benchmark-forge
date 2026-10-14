@@ -1,3 +1,4 @@
+import { ExecutionAlerts } from './ExecutionAlerts';
 import { DeleteButton } from './DeleteButton';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRight, Boxes, ChartNoAxesCombined, CheckCircle2, Cpu, FlaskConical, GitCompareArrows, LayoutDashboard, Menu, Plus, Settings2, ShieldCheck, X } from 'lucide-react';
@@ -87,6 +88,7 @@ export function App() {
     <div className="workspace" inert={smallScreen && mobile}>
       <header className="topbar"><div><button ref={menuButton} aria-controls="navigation" aria-expanded={mobile} className="icon-button mobile-menu" aria-label="メニューを開く" onClick={() => setMobile(true)}><Menu size={20}/></button><span className="breadcrumb">Workspace <span>/</span> <strong>{title}</strong></span></div><div className="topbar-meta"><span className="badge preview">PREVIEW</span><span className="local-label"><ShieldCheck size={14}/> Local-first</span></div></header>
       <main id="main" tabIndex={-1}>
+        <ExecutionAlerts onChanged={refresh}/>
         {(error || refreshError) && <div role="alert" className="error-banner"><span>{error || refreshError}</span><button aria-label="エラーを閉じる" className="icon-button" onClick={() => { setError(''); setRefreshError(''); }}><X size={16}/></button></div>}
         {loading ? <div className="empty-state"><Activity size={28}/><p>ワークスペースを読み込み中…</p></div> : !registry ? <div className="empty-state"><h2>APIに接続できません</h2><p>バックエンドの起動状態を確認してください。</p><button className="primary" disabled={refreshing} onClick={() => void refresh()}>{refreshing ? '接続中…' : '再接続'}</button></div> : <>
           {page === 'dashboard' && <>
