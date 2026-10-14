@@ -241,3 +241,14 @@ Phase 6の結果収集・分析として、同一セットの実モデル2〜10�
 比較画面へ「保存済みセットで追加評価」を追加。過去ランのset_idと選択モデル1件を既存APIへ渡し、問題を再生成せず新しいランを作ります。利用者の既存Qwen結果（run-43408031365145e1ad6af2c5、中央値/合同条件の2問）を再利用し、Gemmaだけを同じセットで測定できます。これら2問は分析経路の実機確認用であり、十分な校正データではありません。
 
 検証結果: Python **279 passed / 6 skipped**、Web **21 passed**、E2E **4 passed**、Ruff lint/format・mypy・TypeScript/Vite・秘密情報ガード成功。E2EでMock観測の拒否と、既存セットhashを保った追加ラン作成・元の100問の正解数保持を確認。選択欄の厳密なラベル検索で発見した問題はaria-labelを明示して修正し、再検証済み。ソフトウェアfixtureの集計であり、Gemmaの実推論・実測校正の完了とは扱いません。
+
+
+## Gemma4の実機結果とセット一致確認（2026-10-14 JST）
+
+利用者提供run-2385a74f3e9e48cfb2a2d9e8を検証。Windows/Ollamaのgemma4:e4b-it-qatで一次方程式と合同条件の2問が完了、回答4/69で2/2正解、無回答・エラー・タイムアウト0、両方stop終了。セットを再生成しhash/全問題、採点、結果と試行履歴、終了理由/応答受領/全リソース集計、MarkdownとJSONLのJSONブロック一致を確認。GPU標本63件・欠測1回、その後の継続を確認。提出原本・生回答・個人パスはGitや通常DBへ取り込まず、証跡をscratchへ保存。
+
+今回のセットhashはf83cb54d…で、予定した既存Qwen/Ollamaの中央値+合同条件セット10579c51…とは異なります。WSL Qwenのff8647de…とは問題実体が一致しますが、profile設定がpreview-quick-v1/customと異なるためセットhashは別です。既存hashの書換えや比較条件の緩和はせず、観測分析が異なるセットを拒否することを確認しました。Gemmaの推論経路の検証は完了ですが、同一セット2モデルの実機集計は未完了です。後続では今回のGemmaセットに既存Qwenを追加することで、Gemmaの再実行を避けられます。
+
+追加機能0b3c574の[Actions](https://github.com/Lye-0/benchmark-forge/actions/runs/38520938785)はWindowsジョブが成功、Linuxは通常チェック成功後の「Verify disposable Docker isolation」で失敗。公開jobページから詳細ログURLを取得しましたが読取は404。原因を断定せず、クラウド側で固定イメージを取得して再現テストを実施しています。利用者のDocker導入保留とは別のCI調査です。到達7/7（Phase 6・未完了）。
+
+クラウドで固定digestのイメージを取得後、実Docker試験は **22 passed（58.71秒）**。初回はクラウドにイメージが未取得だったため作成に失敗しており、その状態をCI失敗原因とは扱いません。イメージ取得後はCIの失敗を再現できませんでした。次の必要な利用者操作は、上記ActionsのLinuxジョブ「Verify disposable Docker isolation」の失敗ログ共有です。利用者PCへのDocker導入やGemma再実行は不要です。
