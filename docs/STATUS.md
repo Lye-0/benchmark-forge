@@ -374,3 +374,13 @@ P50/P95も元のレイテンシから再計算し一致。Gemmaは11.838/12.111�
 - 新規・履歴なしastra/mediumへ公開問題だけを渡した回答診断4問は4問一致。ツール利用なし。dev_reportsへ分離し、正式スコアには含めない。共有workspaceの読み取りを機械的に遮断したとは主張しない。
 - Cloud最終検証: pytest **550 passed / 6 skipped**、Vitest **40 passed**、Playwright **12 passed**、Ruff・format・mypy・秘密情報走査・TypeScript/Vite成功。390px/1440pxの画面検証、390px生成器ページを目視確認。追加後のWindows Actions/実Ollamaは未確認。
 - 到達段階7/7（Phase 6、全要件完了ではない）。次の利用者側確認は、更新後のWindows/Ollamaで新しい50問セットを1モデルで評価しレポートを確認すること。既存モデルを使用でき、Docker・WSL再作成・新モデルのダウンロードは不要。Actions結果の共有は利用者の予定どおり後日。正式Standard、知識資料整備、実測校正、数日耐久は残る。
+
+## 2026-10-14 Windows APIテストの完了待ちを修正
+
+- 提供Actionsログでは `test_delete_registration_preserves_reports_and_does_not_reseed` が、2モデル×20問の実行中に固定5秒の完了待ちで失敗。ログではworkerの進行が続いていたが、失敗時の処理件数は旧ヘルパーに記録されていなかった。
+- テストの完了待ちを選択した2モデル全体の監視へ変更。15秒間の進展なし、総期限120秒、想定外の停止状態、HTTP失敗を明示的に検出し、ID・状態・処理件数・revisionを失敗メッセージへ含める。
+- 待機中はdetail=falseで問題本文と回答の再取得を避け、ポーリング間隔を25ms→100msに変更。製品のスケジューラー・DB耐久性・採点・問題数は変更しない。
+- 同じ削除テストのMock回答へ0.3秒/問の遅延を一時注入。旧コードは5.33秒で同じ失敗、修正後は13.59秒で成功。遅延注入ファイルはリポジトリ外で使用し、本番コードに待機処理を追加していない。
+- 仮想時計で順次実行の36秒進行、停止、予期しないpaused、総期限、HTTP失敗の5回帰ケースを検証。Windowsでの修正後Actionsは未確認。
+- 到達段階7/7（全要件完了ではない）。ユーザーのローカル環境変更やモデル再評価は、このCI修正の確認には不要。
+- Cloud検証: pytest **555 passed / 6 skipped**、Vitest **40 passed**、Ruff・format・mypy・秘密情報走査・TypeScript/Vite成功。アプリ変更がないため、前回成功済みE2Eは今回再実行していない。

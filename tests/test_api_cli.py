@@ -23,14 +23,43 @@ def config():
     return {"generator_ids": list(REGISTRY)[:14], "count": 20, "seed": 41, "fixed_ratio": 0.5}
 
 
-def finish(client, id):
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        result = client.get(f"/api/runs/{id}").json()
-        if result["status"] == "completed":
-            return result
-        time.sleep(0.025)
-    pytest.fail("Run did not finish")
+def finish(
+    client, ids, *, stall_seconds=15, deadline_seconds=120, clock=time.monotonic, sleep=time.sleep
+):
+    """Wait for this sequential batch, without repeatedly loading prompts/answers."""
+    started = changed = clock()
+    signature = None
+    snapshot = []
+    while True:
+        now = clock()
+        if now - started >= deadline_seconds:
+            pytest.fail(f"Run batch deadline exceeded: {snapshot}")
+        if now - changed >= stall_seconds:
+            pytest.fail(f"Run batch stopped making progress: {snapshot}")
+        reports = []
+        for id in ids:
+            response = client.get(f"/api/runs/{id}?detail=false")
+            assert response.status_code == 200, response.text
+            reports.append(response.json())
+        snapshot = [
+            {key: report[key] for key in ("id", "status", "completed", "total", "revision")}
+            for report in reports
+        ]
+        now = clock()
+        if now - started >= deadline_seconds:
+            pytest.fail(f"Run batch deadline exceeded: {snapshot}")
+        if now - changed >= stall_seconds:
+            pytest.fail(f"Run batch stopped making progress: {snapshot}")
+        if any(row["status"] not in {"queued", "running", "completed"} for row in snapshot):
+            pytest.fail(f"Unexpected run state: {snapshot}")
+        if all(
+            row["status"] == "completed" and row["completed"] == row["total"] for row in snapshot
+        ):
+            return reports
+        current = [(row["id"], row["status"], row["completed"]) for row in snapshot]
+        if current != signature:
+            signature, changed = current, now
+        sleep(0.1)
 
 
 def test_full_api_flow_set_privacy_sse_compare_export(client):
@@ -46,7 +75,7 @@ def test_full_api_flow_set_privacy_sse_compare_export(client):
     )
     assert response.status_code == 200
     ids = response.json()["run_ids"]
-    reports = [finish(client, id) for id in ids]
+    reports = finish(client, ids)
     assert [r["correct"] for r in reports] == [20, 0]
     event = client.get(f"/api/runs/{ids[0]}/events", headers={"Last-Event-ID": "999"})
     assert "event: progress" in event.text
@@ -238,8 +267,7 @@ def test_delete_registration_preserves_reports_and_does_not_reseed(client):
         "/api/runs",
         json={"set_id": frozen["set_id"], "model_ids": ["mock-reference", "mock-wrong"]},
     ).json()["run_ids"]
-    for id in ids:
-        finish(client, id)
+    finish(client, ids)
     assert client.post("/api/models/mock-reference/delete", json={}).status_code == 200
     assert client.get(f"/api/runs/{ids[0]}").json()["model"]["model_id"] == "mock-reference"
     assert client.post("/api/models/mock-reference/delete", json={}).status_code == 404
@@ -287,3 +315,67 @@ def test_ollama_discovery_route_is_read_only_and_origin_protected(client, monkey
         == 403
     )
     assert calls == ["http://127.0.0.1:11435"]
+
+
+@pytest.mark.parametrize("scenario", ["slow", "stalled", "paused", "deadline", "http_error"])
+def test_batch_wait_distinguishes_slow_progress_from_failures(scenario):
+    now = [0.0]
+
+    class Response:
+        status_code = 500 if scenario == "http_error" else 200
+        text = "fixture response"
+
+        def __init__(self, id):
+            self.id = id
+
+        def json(self):
+            # The selected second model queues while the first advances for 18 seconds.
+            step = int(now[0] // 6)
+            completed = (
+                0 if scenario == "stalled" else min(3, max(0, step - (3 if self.id == "b" else 0)))
+            )
+            status = (
+                "completed"
+                if completed == 3
+                else "running"
+                if self.id == "a" or step >= 3
+                else "queued"
+            )
+            if scenario == "paused":
+                status = "paused"
+            return {
+                "id": self.id,
+                "status": status,
+                "completed": completed,
+                "total": 3,
+                "revision": step,
+            }
+
+    class Client:
+        def get(self, path, **kwargs):
+            assert path.endswith("?detail=false")
+            return Response(path.split("/")[-1].split("?")[0])
+
+    def advance(_seconds):
+        now[0] += 6
+
+    options = {
+        "clock": lambda: now[0],
+        "sleep": advance,
+        "deadline_seconds": 20 if scenario == "deadline" else 120,
+    }
+    if scenario == "slow":
+        reports = finish(Client(), ["a", "b"], **options)
+        assert now[0] == 36
+        assert [r["completed"] for r in reports] == [3, 3]
+    elif scenario == "http_error":
+        with pytest.raises(AssertionError, match="fixture response"):
+            finish(Client(), ["a", "b"], **options)
+    else:
+        expected = {
+            "stalled": "stopped making progress",
+            "paused": "Unexpected run state",
+            "deadline": "deadline exceeded",
+        }[scenario]
+        with pytest.raises(pytest.fail.Exception, match=expected):
+            finish(Client(), ["a", "b"], **options)
