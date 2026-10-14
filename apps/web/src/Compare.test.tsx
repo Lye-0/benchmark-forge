@@ -1,0 +1,21 @@
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { Compare } from './Compare';
+import { api } from './api';
+import type { Run } from './types';
+vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(), api: vi.fn() }));
+afterEach(() => { cleanup(); vi.resetAllMocks(); });
+it('discards a comparison response after the selected runs change', async () => {
+  const runs = ['a', 'b', 'c'].map(id => ({ id, model: { name: id, backend: 'mock' }, set_hash: 'same', completed: 2, total: 2, created_at: '2026-10-14T00:00:00Z', status: 'completed' })) as Run[];
+  let resolve!: (value: unknown) => void;
+  vi.mocked(api).mockReturnValue(new Promise(r => { resolve = r; }));
+  render(<Compare runs={runs} models={[]} onError={vi.fn()} open={vi.fn()}/>);
+  fireEvent.click(screen.getAllByRole('checkbox')[0]);
+  fireEvent.click(screen.getAllByRole('checkbox')[1]);
+  fireEvent.click(screen.getByRole('button', { name: '選択した実行を比較' }));
+  expect(screen.getByRole('button', { name: '比較中…' })).toBeDisabled();
+  fireEvent.click(screen.getAllByRole('checkbox')[2]);
+  await act(async () => resolve({ comparable: true, warnings: ['old result'], runs: [] }));
+  expect(screen.queryByText('old result')).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: '比較結果' })).not.toBeInTheDocument();
+});

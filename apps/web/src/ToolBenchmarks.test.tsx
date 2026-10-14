@@ -1,0 +1,21 @@
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { ToolBenchmarks } from './ToolBenchmarks';
+import { api } from './api';
+import type { Model } from './types';
+vi.mock('./api', () => ({ api: vi.fn() }));
+afterEach(() => { cleanup(); vi.resetAllMocks(); });
+it('requires a compatible selection after changing the evaluation mode', () => {
+  const models = [{ model_id: 'text', name: 'Text only', capabilities: { available: true, native_tools: false } }] as Model[];
+  render(<ToolBenchmarks models={models} onCreated={vi.fn()} onError={vi.fn()}/>);
+  const start = screen.getByRole('button', { name: '独立評価を開始（5問）' });
+  expect(start).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('独立評価モード'), { target: { value: 'code' } });
+  fireEvent.change(screen.getByLabelText('独立評価モデル'), { target: { value: 'text' } });
+  expect(start).toBeEnabled();
+  fireEvent.change(screen.getByLabelText('独立評価モード'), { target: { value: 'native-tools' } });
+  expect(screen.getByLabelText('独立評価モデル')).toHaveValue('');
+  expect(start).toBeDisabled();
+  fireEvent.click(start);
+  expect(api).not.toHaveBeenCalled();
+});

@@ -21,5 +21,18 @@ it('discards a frozen response if settings changed while the request was pending
   resolve({ ok: true, json: async () => ({ set_id: 'set-old', set_hash: 'hash-old', count: 20, fixed_count: 10, dynamic_count: 10, warnings: [], duplicate_stats: {}, sample: [] }) });
   await waitFor(() => expect(screen.getByRole('button', { name: '問題セットを確定する' })).toBeEnabled());
   expect(screen.queryByRole('heading', { name: '確定した問題セット' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'このセットで実行する' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '選択した1モデルの評価を開始' })).not.toBeInTheDocument();
+});
+
+it('rejects out of range or fractional question counts before calling the API', async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  render(<NewBenchmark registry={registry} models={[model]} presets={[{ id: 'preview-quick-v1', name: 'クイック', description: '', config }]} onCreated={vi.fn()} refresh={vi.fn()} onError={vi.fn()}/>);
+  const user = userEvent.setup();
+  for (const value of ['8001', '1.5']) {
+    await user.clear(screen.getByLabelText('問題数'));
+    await user.type(screen.getByLabelText('問題数'), value);
+    expect(screen.getByRole('button', { name: '問題セットを確定する' })).toBeDisabled();
+  }
+  expect(fetch).not.toHaveBeenCalled();
 });

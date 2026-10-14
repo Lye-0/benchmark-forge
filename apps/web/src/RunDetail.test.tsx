@@ -24,7 +24,7 @@ function snapshot(status: string, revision: number): Run {
     latency_p50: null, latency_p95: null, provisional: status !== 'completed', warnings: [], results: [] } as unknown as Run;
 }
 const registry = { categories: [] } as unknown as Registry;
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.resetAllMocks(); });
 
 it('keeps completion when an older initial detail response arrives after the terminal event', async () => {
   vi.stubGlobal('EventSource', Stream);
@@ -44,7 +44,7 @@ it('keeps completion when a resume response fetch arrives late', async () => {
   vi.mocked(api).mockResolvedValueOnce(snapshot('paused', 2)).mockResolvedValueOnce({}).mockReturnValueOnce(resumed.promise).mockResolvedValue(snapshot('completed', 4));
   render(<RunDetail id="fixture" registry={registry} onError={vi.fn()} refresh={vi.fn().mockResolvedValue(undefined)}/>);
   await act(async () => {});
-  await act(async () => fireEvent.click(screen.getByRole('button', { name: '再開' })));
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'このモデルを再開' })));
   await act(async () => Stream.latest.progress(snapshot('completed', 4)));
   await act(async () => resumed.resolve(snapshot('queued', 3)));
   expect(screen.getByText('完了', { exact: true })).toBeVisible();
@@ -66,6 +66,7 @@ it('requests bounded filtered log pages and ignores late pages after a filter ch
   expect(api).toHaveBeenCalledWith('/runs/fixture/results?offset=0&limit=50&status=empty');
   await act(async () => oldResolve({ total: 9000, results: [], attempts: [] }));
   expect(screen.getByText('0–0 / 0件')).toBeVisible();
+  expect(screen.getByText('該当する結果はありません。')).toBeVisible();
   expect(screen.queryByText(/9000件/)).toBeNull();
   expect(screen.getByRole('button', { name: '次の50件' })).toBeDisabled();
 });

@@ -40,13 +40,16 @@ test('browser configuration → frozen set → run → logs → comparison', asy
   await expect(page.getByRole('heading', { name: '確定した問題セット' })).toBeVisible();
   await expect(page.getByText('100問 · 固定50 / 動的50', { exact: false })).toBeVisible();
   const started = page.waitForResponse(r => r.url().endsWith('/api/runs') && r.request().method() === 'POST');
-  await page.getByRole('button', { name: 'このセットで実行する' }).click();
+  await page.getByRole('button', { name: '選択した2モデルの評価を開始' }).click();
   const { run_ids: runIds } = await (await started).json() as { run_ids: string[] };
   expect(runIds).toHaveLength(2);
+  const batch = page.getByRole('region', { name: '今回開始したモデルの評価' });
+  await expect(batch.getByText('Mock / 誤答テスト', { exact: true })).toBeVisible();
+  await expect(batch.getByText('Mock / 参照ソルバー', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Mock / 参照ソルバー' })).toBeVisible();
-  await page.getByRole('button', { name: '一時停止', exact: true }).click();
-  await expect(page.getByRole('button', { name: '再開', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '再開', exact: true }).click();
+  await page.getByRole('button', { name: 'このモデルを一時停止', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'このモデルを再開', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'このモデルを再開', exact: true }).click();
   const progress = new ProgressWatch(runIds, Date.now());
   await waitForRuns(progress, async () => {
     const response = await request.get('/api/runs', { timeout: 5000 });
@@ -56,7 +59,7 @@ test('browser configuration → frozen set → run → logs → comparison', asy
     } finally { await response.dispose(); }
   });
   // Backend completion must still reach the UI promptly, without a reload.
-  await expect(page.getByText('完了', { exact: true })).toBeVisible({ timeout: 5000 });
+  await expect(page.locator('.page-heading').getByText('完了', { exact: true })).toBeVisible({ timeout: 5000 });
   await page.getByRole('tab', { name: '問題別ログ' }).click();
   await expect(page.locator('details.problem-log')).toHaveCount(50);
   await expect(page.getByText('1–50 / 100件', { exact: true })).toBeVisible();
@@ -67,12 +70,18 @@ test('browser configuration → frozen set → run → logs → comparison', asy
   await expect(page.getByRole('heading', { name: '参照解答' }).first()).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Mock / 参照ソルバー' })).toBeVisible();
+  await expect(batch).toBeVisible();
+  await batch.getByRole('button', { name: 'Mock / 誤答テストの詳細' }).click();
+  await expect(page.getByRole('heading', { name: 'Mock / 誤答テスト' })).toBeVisible();
+  await page.reload();
+  await expect(batch.getByText('Mock / 参照ソルバー', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mock / 誤答テスト' })).toBeVisible();
   await page.getByRole('button', { name: '実行履歴', exact: true }).click();
   await expect(page.getByText('Mock / 誤答テスト', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '結果を比較', exact: true }).click();
   await page.getByRole('checkbox', { name: /Mock \/ 参照ソルバー/ }).first().check();
   await page.getByRole('checkbox', { name: /Mock \/ 誤答テスト/ }).first().check();
-  await page.getByRole('button', { name: '選択したランを比較' }).click();
+  await page.getByRole('button', { name: '選択した実行を比較' }).click();
   await expect(page.getByText('同一問題セット', { exact: true })).toBeVisible();
   await expect(page.getByText('Mock結果はソフトウェア診断です。正式なモデルランキングには含めません。')).toBeVisible();
   await page.getByRole('button', { name: '選択したランの観測を集計' }).click();

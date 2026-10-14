@@ -5,6 +5,8 @@ import type { Model } from './types';
 export function ToolBenchmarks({ models, onCreated, onError }: { models: Model[]; onCreated: (id: string) => void; onError: (message: string) => void }) {
   const [mode, setMode] = useState('native-tools');
   const [model, setModel] = useState('mock-reference');
+  const eligible = models.filter(m => m.capabilities.available && (mode === 'code' || m.capabilities.native_tools));
+  const selected = eligible.find(m => m.model_id === model);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const diagnose = async () => {
@@ -14,6 +16,7 @@ export function ToolBenchmarks({ models, onCreated, onError }: { models: Model[]
     finally { setBusy(false); }
   };
   const start = async () => {
+    if (!selected) return;
     setBusy(true); setStatus('');
     try {
       if (mode === 'code') {
@@ -28,5 +31,5 @@ export function ToolBenchmarks({ models, onCreated, onError }: { models: Model[]
     } catch (e) { onError((e as Error).message); }
     finally { setBusy(false); }
   };
-  return <section className="panel"><h2>ツール・コードの独立評価</h2><p>テキスト型ツール選択とは別の評価です。仮想在庫は問題ごとにリセットし、外部サービスや実データを操作しません。コードは隔離検証が通ったDocker内だけで実行します。</p><div className="form-grid"><label className="field">独立評価モード<select value={mode} onChange={e => setMode(e.target.value)}><option value="native-tools">ネイティブツール呼出</option><option value="agent">複数ターンの仮想在庫</option><option value="code">Pythonコード生成・隔離採点</option></select></label><label className="field">独立評価モデル<select value={model} onChange={e => setModel(e.target.value)}>{models.map(m => <option key={m.model_id} value={m.model_id} disabled={!m.capabilities.available || (mode !== 'code' && !m.capabilities.native_tools)}>{m.name}</option>)}</select></label></div><p className="fine-print">通常評価・仮想ツール評価にはDockerもWSL2も不要です。コード評価にはDocker DesktopのLinuxコンテナ、またはLinuxのDocker Engineが必要です。</p><button className="secondary" disabled={busy} onClick={() => void diagnose()}>隔離環境を診断</button><button className="secondary" disabled={busy} onClick={() => void start()}>独立評価を開始（5問）</button>{status && <p role="status">{status}</p>}</section>;
+  return <section className="panel"><h2>ツール・コードの独立評価</h2><p>テキスト型ツール選択とは別の評価です。仮想在庫は問題ごとにリセットし、外部サービスや実データを操作しません。コードは隔離検証が通ったDocker内だけで実行します。</p><div className="form-grid"><label className="field">独立評価モード<select value={mode} disabled={busy} onChange={e => { const next = e.target.value; setMode(next); if (!models.some(m => m.model_id === model && m.capabilities.available && (next === 'code' || m.capabilities.native_tools))) setModel(''); setStatus(''); }}><option value="native-tools">ネイティブツール呼出</option><option value="agent">複数ターンの仮想在庫</option><option value="code">Pythonコード生成・隔離採点</option></select></label><label className="field">独立評価モデル<select value={model} disabled={busy} onChange={e => setModel(e.target.value)}><option value="">モデルを選択してください</option>{models.map(m => <option key={m.model_id} value={m.model_id} disabled={!m.capabilities.available || (mode !== 'code' && !m.capabilities.native_tools)}>{m.name}</option>)}</select></label></div><p className="fine-print">通常評価・仮想ツール評価にはDockerもWSL2も不要です。コード評価にはDocker DesktopのLinuxコンテナ、またはLinuxのDocker Engineが必要です。</p><button className="secondary" disabled={busy} onClick={() => void diagnose()}>隔離環境を診断</button><button className="secondary" disabled={busy || !selected} onClick={() => void start()}>独立評価を開始（5問）</button>{status && <p role="status">{status}</p>}</section>;
 }
