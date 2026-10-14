@@ -102,7 +102,13 @@ test('browser configuration → frozen set → run → logs → comparison', asy
 
 test('mobile navigation and unsupported categories', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await page.goto('/#unknown');
+  await expect(page.getByRole('heading', { name: 'ベンチマークを、確かな比較へ。' })).toBeVisible();
+  await expect(page.locator('#navigation')).toHaveAttribute('inert', '');
+  await page.getByRole('button', { name: 'メニューを開く' }).click();
+  await expect(page.locator('#navigation button').first()).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'メニューを開く' })).toBeFocused();
   await page.getByRole('button', { name: 'メニューを開く' }).click();
   await page.getByRole('button', { name: '生成器・カバレッジ', exact: true }).click();
   await expect(page.getByRole('heading', { name: '生成器・カバレッジ', exact: true })).toBeVisible();
@@ -119,7 +125,13 @@ test('private holdout import and independent native tool evaluation', async ({ p
     { prompt: 'Private fixture: output ok', category_id: '07', target_difficulty: 10, answer_spec: { type: 'text', expected: 'ok' } },
   ].map(x => JSON.stringify(x)).join('\n');
   await page.getByLabel('私有問題JSONL').setInputFiles({ name: 'fixture.jsonl', mimeType: 'application/x-ndjson', buffer: Buffer.from(jsonl) });
-  await expect(page.getByText('1問を取り込みました。')).toBeVisible();
+  await expect(page.getByText(/1問を取り込み済み/)).toBeVisible();
+  const holdout = page.locator('section').filter({ has: page.getByRole('heading', { name: '私有holdoutの取り込み' }) });
+  await holdout.getByRole('checkbox', { name: 'Mock / 参照ソルバー' }).check();
+  await holdout.getByRole('checkbox', { name: 'Mock / 誤答テスト' }).check();
+  await holdout.getByRole('button', { name: '選択した2モデルで取り込み済みの問題を評価' }).click();
+  await expect(page.getByRole('region', { name: '今回開始したモデルの評価' })).toBeVisible();
+  await page.getByRole('button', { name: 'プロファイル・設定', exact: true }).click();
   await page.getByLabel('独立評価モード').selectOption('agent');
   await page.getByRole('button', { name: '独立評価を開始（5問）' }).click();
   await expect(page.getByText('完了', { exact: true }).first()).toBeVisible({ timeout: 10000 });
@@ -129,7 +141,7 @@ test('private holdout import and independent native tool evaluation', async ({ p
 
 test('speed probe is labeled separately from ability', async ({ page }) => {
   await page.goto('/#settings');
-  await page.getByRole('button', { name: '速度試験を開始' }).click();
+  await page.getByRole('button', { name: '速度試験を開始（3回）' }).click();
   await expect(page.getByText(/専用速度試験：正答率は出力形式の遵守確認/)).toBeVisible();
   await expect(page.getByText('完了', { exact: true }).first()).toBeVisible();
 });

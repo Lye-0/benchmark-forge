@@ -1,8 +1,10 @@
+import { useMounted } from './useMounted';
 import { useState } from 'react';
 import { api } from './api';
 import type { Model, Run } from './types';
 
 export function ReuseSet({ runs, models, onCreated, onError }: { runs: Run[]; models: Model[]; onCreated: (id: string) => void; onError: (message: string) => void }) {
+  const mounted = useMounted();
   const [source, setSource] = useState('');
   const [model, setModel] = useState('');
   const [busy, setBusy] = useState(false);
@@ -14,13 +16,13 @@ export function ReuseSet({ runs, models, onCreated, onError }: { runs: Run[]; mo
     setBusy(true);
     try {
       const result = await api<{ run_ids: string[] }>('/runs', { set_id: selected.set_id, model_ids: [model] });
-      onCreated(result.run_ids[0]);
-    } catch (error) { onError((error as Error).message); }
+      if (mounted.current) onCreated(result.run_ids[0]);
+    } catch (error) { mounted.current && onError((error as Error).message); }
     finally { setBusy(false); }
   };
-  return <section className="panel"><h2>保存済みセットで追加評価</h2>
+  return <section className="panel"><h2>保存済みのテキスト評価セットで追加評価</h2>
     <p>以前と同じ問題を、選んだモデルだけで実行します。問題を再生成せず、既存の結果も保持します。</p>
-    <div className="form-grid">
+    {!candidates.length && <p>再利用できるテキスト評価がありません。<a href="#new">新しいベンチマークを作成</a></p>}<div className="form-grid">
       <label className="field">元の実行<select aria-label="元の実行" value={source} disabled={busy} onChange={event => setSource(event.target.value)}><option value="">選択してください</option>{candidates.map(run => <option key={run.id} value={run.id}>{run.model.name} · {run.total}問 · {run.id}</option>)}</select></label>
       <label className="field">追加評価モデル<select aria-label="追加評価モデル" value={model} disabled={busy} onChange={event => setModel(event.target.value)}><option value="">選択してください</option>{models.map(m => <option key={m.model_id} value={m.model_id} disabled={!m.capabilities.available}>{m.name}</option>)}</select></label>
     </div>

@@ -41,7 +41,24 @@ describe('registry driven selection', () => {
     expect(screen.getByText('総和')).toBeVisible();
     await user.click(screen.getByText('すべて選択'));
     expect(screen.getByLabelText('選択ID')).toHaveTextContent('sum,product');
-    await user.click(screen.getByText('解除'));
+    await user.click(screen.getByText('選択をすべて解除'));
     expect(screen.getByLabelText('選択ID')).toBeEmptyDOMElement();
   });
+});
+
+it('expands nested branches and confines search selection to visible generators', async () => {
+  const user = userEvent.setup(); render(<Harness/>);
+  await user.click(screen.getByRole('button', { name: '算術の生成器を閉じる' }));
+  await user.click(screen.getByRole('button', { name: 'すべて展開' }));
+  expect(screen.getByText('総和')).toBeVisible();
+  await user.type(screen.getByLabelText('カテゴリ・生成器を検索'), '積の計算');
+  await user.click(screen.getByLabelText('数学'));
+  expect(screen.getByLabelText('選択ID')).toHaveTextContent('sum,product');
+  await user.click(screen.getByRole('button', { name: '検索結果の選択を解除' }));
+  expect(screen.getByLabelText('選択ID')).toHaveTextContent(/^sum$/);
+  await user.click(screen.getByRole('button', { name: '折りたたむ' }));
+  expect(screen.queryByText('積の計算')).not.toBeInTheDocument();
+  await user.clear(screen.getByLabelText('カテゴリ・生成器を検索'));
+  await user.type(screen.getByLabelText('カテゴリ・生成器を検索'), '数学 算術');
+  expect(screen.getByText('該当する検証済み生成器はありません。')).toBeVisible();
 });

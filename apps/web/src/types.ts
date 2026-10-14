@@ -5,7 +5,7 @@ export interface Registry { categories: Category[]; generator_count: number; cov
 export interface Config { generator_ids: string[]; count: number; seed: number; difficulty_min: number; difficulty_max: number; fixed_ratio: number; profile: string; custom: boolean; }
 export interface Preset { id: string; name: string; description: string; config: Config; }
 export interface Capabilities { available: boolean; status: string; reason: string; test_only: boolean; live_verified: boolean; execution_path: string; native_tools: boolean; }
-export interface Model { model_id: string; name: string; backend: string; model: string; endpoint: string; revision: string; quantization: string; temperature: number; max_tokens: number; timeout_seconds: number; capabilities: Capabilities; }
+export interface Model { context_length?: number | null; device?: string; native_tools?: boolean; streaming?: boolean; gpu_sampling?: boolean; inference_seed?: number; mock_behavior?: string; model_id: string; name: string; backend: string; model: string; endpoint: string; revision: string; quantization: string; temperature: number; max_tokens: number; timeout_seconds: number; capabilities: Capabilities; }
 export interface Group { total: number; completed: number; correct: number; accuracy: number | null; weighted_contribution: number; }
 export interface Difficulty extends Group { lower: number; upper: number; observed_wilson_95: [number, number] | null; }
 export interface Problem { problem_id: string; prompt: string; generator_id: string; category_id: string; target_difficulty: number; origin: string; answer_spec: { expected: unknown }; }

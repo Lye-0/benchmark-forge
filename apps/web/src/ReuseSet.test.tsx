@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './api';
 import { ReuseSet } from './ReuseSet';
@@ -19,4 +19,17 @@ it('submits the frozen set and only the explicitly selected model without regene
   await waitFor(() => expect(onCreated).toHaveBeenCalledWith('new'));
   expect(api).toHaveBeenCalledTimes(1);
   expect(api).toHaveBeenCalledWith('/runs', { set_id: 'frozen-old-version', model_ids: ['second'] });
+});
+
+it('does not redirect after leaving while a start request is pending', async () => {
+  let resolve!: (value: unknown) => void;
+  vi.mocked(api).mockReturnValue(new Promise(r => { resolve = r; }));
+  const created = vi.fn();
+  const view = render(<ReuseSet runs={[{ id: 'old', set_id: 'set', model: { name: 'First' }, total: 1 } as Run]} models={[{ model_id: 'model', name: 'Model', capabilities: { available: true } } as Model]} onCreated={created} onError={vi.fn()}/>);
+  fireEvent.change(screen.getByLabelText('元の実行', { exact: true }), { target: { value: 'old' } });
+  fireEvent.change(screen.getByLabelText('追加評価モデル', { exact: true }), { target: { value: 'model' } });
+  fireEvent.click(screen.getByRole('button'));
+  view.unmount();
+  await act(async () => resolve({ run_ids: ['new'] }));
+  expect(created).not.toHaveBeenCalled();
 });

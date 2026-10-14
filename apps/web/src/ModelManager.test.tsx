@@ -1,7 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
 import { ModelManager } from './ModelManager';
 import { api } from './api';
+
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 vi.mock('./api', () => ({ api: vi.fn().mockResolvedValue({}) }));
 
@@ -19,4 +21,18 @@ it('saves local Transformers device and context limit', async () => {
   fireEvent.click(screen.getByRole('button', { name: '新しいモデルを登録' }));
   await waitFor(() => expect(api).toHaveBeenCalledWith('/models', expect.objectContaining({ backend: 'transformers', model: '/models/local', context_length: 2048, device: 'cuda', inference_seed: 12345, gpu_sampling: true })));
   expect(refresh).toHaveBeenCalled();
+});
+
+
+it('loads existing settings for editing and preserves non-form backend options', async () => {
+  const model = { model_id: 'wrong', name: 'Wrong mock', backend: 'mock', model: 'wrong', endpoint: 'http://127.0.0.1:11434', revision: 'v1', quantization: 'N/A', temperature: 0.5, max_tokens: 2048, timeout_seconds: 60, mock_behavior: 'wrong', capabilities: { available: true, status: 'test-only', reason: 'fixture', native_tools: true } };
+  render(<ModelManager models={[model as import('./types').Model]} refresh={vi.fn()} onError={vi.fn()}/>);
+  fireEvent.change(screen.getByLabelText('モデルID'), { target: { value: 'wrong' } });
+  expect(screen.getByRole('button', { name: /登録済みIDです/ })).toBeDisabled();
+  Element.prototype.scrollIntoView = vi.fn();
+  fireEvent.click(screen.getByRole('button', { name: '設定を編集' }));
+  expect(screen.getByLabelText('最大出力トークン')).toHaveValue(2048);
+  fireEvent.change(screen.getByLabelText('表示名'), { target: { value: 'Renamed' } });
+  fireEvent.click(screen.getByRole('button', { name: '「Wrong mock」の設定を更新' }));
+  await waitFor(() => expect(api).toHaveBeenCalledWith('/models', expect.objectContaining({ name: 'Renamed', mock_behavior: 'wrong', temperature: 0.5, max_tokens: 2048 })));
 });

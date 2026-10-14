@@ -1,0 +1,22 @@
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { HoldoutImport } from './HoldoutImport';
+import { api } from './api';
+import type { Model } from './types';
+vi.mock('./api', () => ({ api: vi.fn() }));
+afterEach(() => { cleanup(); vi.resetAllMocks(); });
+it('preserves a valid import after replacement failure and opens every selected run', async () => {
+  vi.mocked(api).mockResolvedValueOnce({ set_id: 'saved', set_hash: 'hash', count: 1, warnings: [] }).mockRejectedValueOnce(new Error('invalid JSONL')).mockResolvedValueOnce({ run_ids: ['a', 'b'] });
+  const created = vi.fn();
+  const models = ['a', 'b'].map(id => ({ model_id: id, name: id, capabilities: { available: true } })) as Model[];
+  render(<HoldoutImport models={models} onCreated={created} onError={vi.fn()}/>);
+  const upload = async (name: string) => { const file = new File(['{}'], name); Object.defineProperty(file, 'text', { value: async () => '{}' }); await act(async () => fireEvent.change(screen.getByLabelText('私有問題JSONL'), { target: { files: [file] } })); };
+  await upload('valid.jsonl');
+  await upload('invalid.jsonl');
+  expect(screen.getByRole('status')).toHaveTextContent('valid.jsonl');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'a' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'b' }));
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: '選択した2モデルで取り込み済みの問題を評価' })));
+  expect(api).toHaveBeenLastCalledWith('/runs', { set_id: 'saved', model_ids: ['a', 'b'] });
+  expect(created).toHaveBeenCalledWith(['a', 'b']);
+});

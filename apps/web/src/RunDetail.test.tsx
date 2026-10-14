@@ -41,7 +41,7 @@ it('keeps completion when an older initial detail response arrives after the ter
 it('keeps completion when a resume response fetch arrives late', async () => {
   vi.stubGlobal('EventSource', Stream);
   const resumed = deferred();
-  vi.mocked(api).mockResolvedValueOnce(snapshot('paused', 2)).mockResolvedValueOnce({}).mockReturnValueOnce(resumed.promise).mockResolvedValue(snapshot('completed', 4));
+  vi.mocked(api).mockResolvedValueOnce(snapshot('paused', 2)).mockReturnValueOnce(resumed.promise).mockResolvedValue(snapshot('completed', 4));
   render(<RunDetail id="fixture" registry={registry} onError={vi.fn()} refresh={vi.fn().mockResolvedValue(undefined)}/>);
   await act(async () => {});
   await act(async () => fireEvent.click(screen.getByRole('button', { name: 'このモデルを再開' })));
@@ -69,4 +69,31 @@ it('requests bounded filtered log pages and ignores late pages after a filter ch
   expect(screen.getByText('該当する結果はありません。')).toBeVisible();
   expect(screen.queryByText(/9000件/)).toBeNull();
   expect(screen.getByRole('button', { name: '次の50件' })).toBeDisabled();
+});
+
+it('offers retry for failed detail and does not call failed logs empty', async () => {
+  vi.stubGlobal('EventSource', Stream);
+  vi.mocked(api).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(snapshot('completed', 4));
+  render(<RunDetail id="fixture" registry={registry} onError={vi.fn()} refresh={vi.fn()}/>);
+  await act(async () => {});
+  expect(screen.getByRole('alert')).toHaveTextContent('実行結果を取得できません');
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: '再読み込み' })));
+  vi.mocked(api).mockRejectedValueOnce(new Error('log offline'));
+  await act(async () => fireEvent.click(screen.getByRole('tab', { name: '問題別ログ' })));
+  expect(screen.getByRole('alert')).toHaveTextContent('ログを取得できません');
+  expect(screen.queryByText('記録された回答はありません。')).not.toBeInTheDocument();
+});
+
+it('uses the control response to reopen retry streaming without an extra required GET', async () => {
+  vi.stubGlobal('EventSource', Stream);
+  const completed = { ...snapshot('completed', 4), status_counts: { error: 1 } };
+  vi.mocked(api).mockResolvedValueOnce(completed).mockResolvedValueOnce(snapshot('queued', 5)).mockRejectedValue(new Error('GET failed'));
+  render(<RunDetail id="fixture" registry={registry} onError={vi.fn()} refresh={vi.fn()}/>);
+  await act(async () => {});
+  const originalStream = Stream.latest;
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'エラー・タイムアウトを再試行' })));
+  expect(Stream.latest).not.toBe(originalStream);
+  expect(screen.getByText('待機中', { exact: true })).toBeVisible();
+  await act(async () => Stream.latest.progress(snapshot('running', 6)));
+  expect(screen.getByText('実行中', { exact: true })).toBeVisible();
 });
