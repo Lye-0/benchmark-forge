@@ -145,3 +145,37 @@ test('speed probe is labeled separately from ability', async ({ page }) => {
   await expect(page.getByText(/専用速度試験：正答率は出力形式の遵守確認/)).toBeVisible();
   await expect(page.getByText('完了', { exact: true }).first()).toBeVisible();
 });
+
+for (const width of [1440, 390]) {
+  test(`model buttons and popup editing at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/#models');
+    const card = page.locator('.model-card').filter({ has: page.getByRole('heading', { name: 'Mock / 誤答テスト', exact: true }) });
+    const edit = card.getByRole('button', { name: '設定を編集' });
+    const check = card.getByRole('button', { name: '対応機能を確認' });
+    const a = await edit.boundingBox(); const b = await check.boundingBox();
+    expect(a && b && (b.x >= a.x + a.width + 8 || b.y >= a.y + a.height + 8)).toBeTruthy();
+    await page.getByLabel('表示名', { exact: true }).fill('未保存の新規モデル');
+    await edit.click();
+    const dialog = page.getByRole('dialog', { name: 'モデル設定を編集' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel('表示名', { exact: true })).toHaveValue('Mock / 誤答テスト');
+    await dialog.getByLabel('表示名', { exact: true }).fill('保存しない編集');
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(edit).toBeFocused();
+    await expect(page.getByLabel('表示名', { exact: true })).toHaveValue('未保存の新規モデル');
+    await edit.click();
+    await expect(dialog.getByLabel('表示名', { exact: true })).toHaveValue('Mock / 誤答テスト');
+    await dialog.getByLabel('温度', { exact: true }).fill('0.2');
+    await dialog.getByRole('button', { name: '「Mock / 誤答テスト」の設定を更新' }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(card.getByText('0.2 / 512 tokens')).toBeVisible();
+    await edit.click();
+    await expect(dialog.getByLabel('温度', { exact: true })).toHaveValue('0.2');
+    expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({ path: `/tmp/model-editor-${width}.png` });
+    await dialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+  });
+}

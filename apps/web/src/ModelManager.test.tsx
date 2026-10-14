@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ModelManager } from './ModelManager';
 import { api } from './api';
@@ -29,10 +29,12 @@ it('loads existing settings for editing and preserves non-form backend options',
   render(<ModelManager models={[model as import('./types').Model]} refresh={vi.fn()} onError={vi.fn()}/>);
   fireEvent.change(screen.getByLabelText('モデルID'), { target: { value: 'wrong' } });
   expect(screen.getByRole('button', { name: /登録済みIDです/ })).toBeDisabled();
-  Element.prototype.scrollIntoView = vi.fn();
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
   fireEvent.click(screen.getByRole('button', { name: '設定を編集' }));
-  expect(screen.getByLabelText('最大出力トークン')).toHaveValue(2048);
-  fireEvent.change(screen.getByLabelText('表示名'), { target: { value: 'Renamed' } });
+  const editor = within(screen.getByRole('dialog'));
+  expect(editor.getByLabelText('最大出力トークン')).toHaveValue(2048);
+  fireEvent.change(editor.getByLabelText('表示名'), { target: { value: 'Renamed' } });
   fireEvent.click(screen.getByRole('button', { name: '「Wrong mock」の設定を更新' }));
   await waitFor(() => expect(api).toHaveBeenCalledWith('/models', expect.objectContaining({ name: 'Renamed', mock_behavior: 'wrong', temperature: 0.5, max_tokens: 2048 })));
 });
