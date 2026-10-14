@@ -310,3 +310,43 @@ async def test_cancel_during_model_observation_keeps_worker_alive(store, frozen,
         assert store.run_status(next_id) == "completed"
     finally:
         await scheduler.close()
+
+
+def test_delete_requires_terminal_and_finished_worker(store, frozen):
+    from llm_benchmark.runner import Scheduler
+
+    scheduler = Scheduler(store)
+    id = store.create_run(frozen.set_id, store.get_model("mock-reference"))
+    for status in ["queued", "running", "pausing", "paused"]:
+        store.status(id, status)
+        with pytest.raises(ValueError, match="完了または中止"):
+            scheduler.delete_run(id)
+    store.status(id, "cancelled")
+    scheduler.processing = id
+    with pytest.raises(ValueError, match="終了を待って"):
+        scheduler.delete_run(id)
+    scheduler.processing = None
+    scheduler.delete_run(id)
+    with pytest.raises(KeyError):
+        store.run(id)
+
+
+@pytest.mark.asyncio
+async def test_deleted_queue_entry_does_not_stop_worker(store, frozen):
+    from llm_benchmark.runner import Scheduler
+
+    scheduler = Scheduler(store)
+    first, second = scheduler.create(frozen.set_id, ["mock-reference", "mock-wrong"])
+    scheduler.control(first, "cancel")
+    scheduler.delete_run(first)
+    store.delete_model("mock-wrong")
+    task = asyncio.create_task(scheduler.worker())
+    try:
+        await asyncio.wait_for(scheduler.queue.join(), timeout=5)
+        assert store.run_status(second) == "completed"
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

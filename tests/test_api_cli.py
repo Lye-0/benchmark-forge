@@ -228,3 +228,40 @@ def test_run_listing_loads_each_result_set_once(store, frozen, monkeypatch):
         response = client.get("/api/runs")
     assert response.status_code == 200
     assert reads == [run_id]
+
+
+def test_delete_registration_preserves_reports_and_does_not_reseed(client):
+    from llm_benchmark.storage import Store
+
+    frozen = client.post("/api/sets", json=config()).json()
+    ids = client.post(
+        "/api/runs",
+        json={"set_id": frozen["set_id"], "model_ids": ["mock-reference", "mock-wrong"]},
+    ).json()["run_ids"]
+    for id in ids:
+        finish(client, id)
+    assert client.post("/api/models/mock-reference/delete", json={}).status_code == 200
+    assert client.get(f"/api/runs/{ids[0]}").json()["model"]["model_id"] == "mock-reference"
+    assert client.post("/api/models/mock-reference/delete", json={}).status_code == 404
+    directory = client.get("/api/settings").json()["data_directory"]
+    from pathlib import Path
+
+    assert "mock-reference" not in [m.model_id for m in Store(Path(directory)).models()]
+    assert client.post(f"/api/runs/{ids[0]}/delete", json={}).status_code == 200
+    assert client.get(f"/api/runs/{ids[0]}").status_code == 404
+    assert client.get(f"/api/runs/{ids[1]}").status_code == 200
+    assert client.get("/api/sets/" + frozen["set_id"]).status_code == 200
+    with Store(Path(directory)).connection() as con:
+        assert (
+            con.execute("SELECT count(*) FROM attempts WHERE run_id=?", (ids[0],)).fetchone()[0]
+            == 0
+        )
+        assert (
+            con.execute("SELECT count(*) FROM results WHERE run_id=?", (ids[0],)).fetchone()[0] == 0
+        )
+    assert (
+        client.post(
+            f"/api/runs/{ids[1]}/delete", json={}, headers={"Origin": "https://evil.example"}
+        ).status_code
+        == 403
+    )

@@ -220,3 +220,5 @@ fieldset.form-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 .model-dialog .button-row { justify-content: flex-end; }
 .model-dialog .form-grid { min-width: 0; }
 @media (max-width: 760px) { .model-dialog { padding: 18px; }.model-dialog .form-grid { grid-template-columns: 1fr; } }
+.delete-dialog { max-width: 520px; }
+.delete-dialog p { line-height: 1.8; overflow-wrap: anywhere; margin: 20px 0; }

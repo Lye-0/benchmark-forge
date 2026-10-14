@@ -1,3 +1,4 @@
+import { DeleteButton } from './DeleteButton';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRight, Boxes, ChartNoAxesCombined, CheckCircle2, Cpu, FlaskConical, GitCompareArrows, LayoutDashboard, Menu, Plus, Settings2, ShieldCheck, X } from 'lucide-react';
 import { api, date, pct, statusName, measurementName } from './api';
@@ -23,9 +24,9 @@ const navigation = [
   { id: 'settings', name: 'プロファイル・設定', icon: Settings2 },
 ];
 
-export function RunTable({ runs, open }: { runs: Run[]; open: (id: string) => void }) {
+export function RunTable({ runs, open, refresh }: { runs: Run[]; open: (id: string) => void; refresh?: () => Promise<void> }) {
   if (!runs.length) return <div className="empty-state"><ChartNoAxesCombined size={32}/><h3>まだ実行結果がありません</h3><p>問題セットを確定して、最初の診断を始めましょう。</p></div>;
-  return <div className="table-scroll"><table><thead><tr><th>モデル / 実行</th><th>状態</th><th>正答率・形式遵守率</th><th>処理数</th><th>日時</th><th><span className="sr-only">詳細</span></th></tr></thead><tbody>{runs.map(run => <tr key={run.id}><td><strong>{run.model.name}</strong><small>{measurementName(run.measurement_kind)} · {run.id.slice(0, 16)}… {run.test_only && '· Mock診断'}</small></td><td><span className={`badge ${run.status}`}>{statusName[run.status]}</span></td><td><strong className="numeric">{pct(run.accuracy)}</strong>{run.measurement_kind === 'speed' && <small>形式遵守率</small>}{run.provisional && <small>暫定</small>}</td><td className="numeric">{run.completed} / {run.total}</td><td>{date(run.created_at)}</td><td><button className="icon-button" aria-label={`${run.model.name}の詳細`} onClick={() => open(run.id)}><ArrowRight size={18}/></button></td></tr>)}</tbody></table></div>;
+  return <div className="table-scroll"><table><thead><tr><th>モデル / 実行</th><th>状態</th><th>正答率・形式遵守率</th><th>処理数</th><th>日時</th><th><span className="sr-only">詳細</span></th></tr></thead><tbody>{runs.map(run => <tr key={run.id}><td><strong>{run.model.name}</strong><small>{measurementName(run.measurement_kind)} · {run.id.slice(0, 16)}… {run.test_only && '· Mock診断'}</small></td><td><span className={`badge ${run.status}`}>{statusName[run.status]}</span></td><td><strong className="numeric">{pct(run.accuracy)}</strong>{run.measurement_kind === 'speed' && <small>形式遵守率</small>}{run.provisional && <small>暫定</small>}</td><td className="numeric">{run.completed} / {run.total}</td><td>{date(run.created_at)}</td><td><div className="button-row"><button className="icon-button" aria-label={`${run.model.name}の詳細`} onClick={() => open(run.id)}><ArrowRight size={18}/></button>{refresh && ['completed', 'cancelled'].includes(run.status) && <DeleteButton path={`/runs/${run.id}/delete`} title={`「${run.model.name}」の実行履歴を削除しますか？`} description={`${date(run.created_at)} · ${run.id}。回答・採点結果・試行履歴を削除します。この操作は取り消せません。問題セットと他の実行結果は残ります。`} onDeleted={refresh}/>}</div></td></tr>)}</tbody></table></div>;
 }
 
 const route = () => { const hash = window.location.hash.slice(1); return navigation.some(n => n.id === hash) || /^run\/[^?]+(?:\?.*)?$/.test(hash) ? hash : 'dashboard'; };
@@ -95,7 +96,7 @@ export function App() {
             <section className="panel"><div className="panel-title"><div><h2>最近の実行</h2><p>保存された問題セットと結果をいつでも確認。</p></div><button className="text-button" onClick={() => navigate('history')}>すべて見る <ArrowRight size={16}/></button></div><RunTable runs={runs.slice(0, 5)} open={openRun}/></section>
           </>}
           {page === 'new' && <NewBenchmark registry={registry} models={models} presets={presets} onCreated={openBatch} refresh={refresh} onError={setError}/>}
-          {page === 'history' && <><div className="page-heading"><div><div className="eyebrow">RUN HISTORY</div><h1>実行履歴</h1><p>完了・中断したランを、同じ問題セットとともに追跡。</p></div><button className="secondary" disabled={refreshing} onClick={() => void refresh()}>{refreshing ? '更新中…' : '更新'}</button></div><section className="panel"><RunTable runs={runs} open={openRun}/></section></>}
+          {page === 'history' && <><div className="page-heading"><div><div className="eyebrow">RUN HISTORY</div><h1>実行履歴</h1><p>完了・中断したランを、同じ問題セットとともに追跡。</p></div><button className="secondary" disabled={refreshing} onClick={() => void refresh()}>{refreshing ? '更新中…' : '更新'}</button></div><section className="panel"><RunTable runs={runs} open={openRun} refresh={refresh}/></section></>}
           {page.startsWith('run/') && <>{batchIds.length > 1 && <RunBatch ids={batchIds} selected={runId} open={id => openBatch(batchIds, id)} onError={setError}/>}<RunDetail key={runId} id={runId} registry={registry} onError={setError} refresh={refresh}/></>}
           {page === 'compare' && <Compare runs={runs} models={models} onError={setError} open={openRun}/>}
           {page === 'models' && <ModelManager models={models} refresh={refresh} onError={setError}/>}

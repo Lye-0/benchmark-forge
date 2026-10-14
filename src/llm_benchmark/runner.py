@@ -223,6 +223,7 @@ def comparison(reports: list[dict]) -> dict:
 
 class Scheduler:
     def __init__(self, store: Store):
+        self.processing: str | None = None
         self.store = store
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.task: asyncio.Task | None = None
@@ -292,16 +293,28 @@ class Scheduler:
         else:
             raise ValueError(f"{status} のランには {action} を実行できません")
 
+    def delete_run(self, id: str):
+        if self.processing == id:
+            raise ValueError("実行処理の終了を待ってから削除してください")
+        self.store.delete_run(id)
+
     async def worker(self):
         while True:
             id = await self.queue.get()
             try:
+                # Cancelled queued runs may have been deleted before dequeue.
+                try:
+                    self.store.run_status(id)
+                except KeyError:
+                    continue
+                self.processing = id
                 await self.execute(id)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 self.store.status(id, "paused")
             finally:
+                self.processing = None
                 self.queue.task_done()
 
     async def execute(self, id: str):

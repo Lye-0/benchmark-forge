@@ -179,3 +179,30 @@ for (const width of [1440, 390]) {
     await expect(dialog).not.toBeVisible();
   });
 }
+
+test('deletion confirms each target and preserves history after model removal', async ({ page, request }) => {
+  const model = { model_id: 'delete-fixture', name: '削除確認用モデル', backend: 'mock' };
+  expect((await request.post('/api/models', { data: model })).ok()).toBe(true);
+  const frozen = await (await request.post('/api/sets', { data: { generator_ids: ['math.linear'], count: 1, fixed_ratio: 0, seed: 42 } })).json();
+  const { run_ids: [id] } = await (await request.post('/api/runs', { data: { set_id: frozen.set_id, model_ids: [model.model_id] } })).json();
+  await expect.poll(async () => (await (await request.get(`/api/runs/${id}`)).json()).status).toBe('completed');
+  await page.goto('/#models');
+  const card = page.locator('.model-card').filter({ hasText: model.name });
+  await card.getByRole('button', { name: '削除', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('モデル本体のファイル');
+  await dialog.getByRole('button', { name: 'キャンセル' }).click();
+  await expect(card).toBeVisible();
+  await card.getByRole('button', { name: '削除', exact: true }).click();
+  await dialog.getByRole('button', { name: '削除する', exact: true }).click();
+  await expect(card).toHaveCount(0);
+  expect((await request.get(`/api/runs/${id}`)).ok()).toBe(true);
+  await page.getByRole('button', { name: '実行履歴', exact: true }).click();
+  const row = page.getByRole('row').filter({ hasText: model.name });
+  await row.getByRole('button', { name: '削除', exact: true }).click();
+  await expect(dialog).toContainText(id);
+  await dialog.getByRole('button', { name: '削除する', exact: true }).click();
+  await expect(row).toHaveCount(0);
+  expect((await request.get(`/api/runs/${id}`)).status()).toBe(404);
+  expect((await request.get(`/api/sets/${frozen.set_id}`)).ok()).toBe(true);
+});

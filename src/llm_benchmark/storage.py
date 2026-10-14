@@ -89,7 +89,7 @@ class Store:
                     "UPDATE sets SET data=json_remove(data,'$.problems') WHERE json_type(data,'$.problems')='array'"
                 )
                 con.execute("PRAGMA user_version=3")
-            for model in DEFAULT_MODELS:
+            for model in DEFAULT_MODELS if version == 0 else []:
                 con.execute(
                     "INSERT OR IGNORE INTO models VALUES(?,?)",
                     (model.model_id, model.model_dump_json()),
@@ -206,6 +206,25 @@ class Store:
                 "INSERT INTO models VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
                 (model.model_id, model.model_dump_json()),
             )
+
+    def delete_model(self, id: str):
+        # Runs keep an immutable configuration snapshot, independent of registration.
+        with self.connection() as con:
+            if not con.execute("DELETE FROM models WHERE id=?", (id,)).rowcount:
+                raise KeyError("モデルが見つかりません")
+
+    def delete_run(self, id: str):
+        with self.connection() as con:
+            con.execute("BEGIN IMMEDIATE")
+            row = con.execute("SELECT status FROM runs WHERE id=?", (id,)).fetchone()
+            if row is None:
+                raise KeyError("実行履歴が見つかりません")
+            if row[0] not in {"completed", "cancelled"}:
+                raise ValueError("完了または中止した実行だけ削除できます")
+            con.execute("DELETE FROM attempts WHERE run_id=?", (id,))
+            con.execute("DELETE FROM results WHERE run_id=?", (id,))
+            con.execute("DELETE FROM runs WHERE id=?", (id,))
+            # Frozen sets may be shared by other runs and remain reusable.
 
     def create_run(self, set_id: str, model: ModelConfig) -> str:
         id = f"run-{uuid.uuid4().hex[:24]}"

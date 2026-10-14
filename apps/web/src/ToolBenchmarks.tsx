@@ -6,7 +6,7 @@ import type { Model } from './types';
 export function ToolBenchmarks({ models, onCreated, onError, onDiagnosed }: { models: Model[]; onCreated: (id: string) => void; onError: (message: string) => void; onDiagnosed?: () => Promise<void> }) {
   const mounted = useMounted();
   const [mode, setMode] = useState('native-tools');
-  const [model, setModel] = useState('mock-reference');
+  const [model, setModel] = useState(() => models.some(m => m.model_id === 'mock-reference' && m.capabilities.available) ? 'mock-reference' : '');
   const eligible = models.filter(m => m.capabilities.available && (mode === 'code' || m.capabilities.native_tools));
   const selected = eligible.find(m => m.model_id === model);
   const [diagnosing, setDiagnosing] = useState(false);

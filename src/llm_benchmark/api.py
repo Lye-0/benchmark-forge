@@ -183,6 +183,11 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         store.save_model(model)
         return {**model.model_dump(), "capabilities": capabilities(model)}
 
+    @app.post("/api/models/{model_id}/delete")
+    async def delete_model(model_id: str):
+        store.delete_model(model_id)
+        return {"deleted": model_id}
+
     @app.post("/api/models/{model_id}/check")
     async def check_model(model_id: str):
         model = store.get_model(model_id)
@@ -288,6 +293,11 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         | None = None,
     ):
         return store.result_page(run_id, offset=offset, limit=limit, status=status)
+
+    @app.post("/api/runs/{run_id}/delete")
+    async def delete_run(run_id: str):
+        scheduler.delete_run(run_id)
+        return {"deleted": run_id}
 
     @app.post("/api/runs/{run_id}/{action}")
     async def control(run_id: str, action: Literal["pause", "resume", "cancel", "retry"]):
