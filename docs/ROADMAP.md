@@ -16,9 +16,9 @@
 
 ## 次の確認が必要な領域
 
-今回の追加後は、[WindowsでGPU計測ONの2問と既存履歴の保持](WINDOWS.md#gpu連続計測とdb-v3への更新確認)を確認します。更新前にアプリ停止とデータ領域のバックアップを行います。
+Windows/OllamaのGPU連続計測、WSL2/TransformersのCUDA実推論とQwen3回答分離を利用者提供の結果で確認済み。これらの2問の再実行は不要です。以下は独立した残項目です。
 
-1. Windows CI成功とWindowsでのOllama評価完了はユーザー報告で確認済み。CUDA/ドライバー/メモリの詳細とTransformers実推論は利用時に確認。Cloudで実モデル回答を代用しない。
+1. Windows CI・Ollama・GPU連続計測、WSL2でのQwen3-0.6B/CUDA実推論は確認済み。Windows版TransformersはSmart App Controlに阻まれ未検証。保護機能は無効化しない。Cloudで実モデル回答を代用しない。
 2. Windows Docker DesktopのLinuxコンテナ、またはLinux/WSL2のDocker環境でsandbox-checkを通す。Linuxではrootless推奨。検証が通らない場合は無効のまま、環境差を調査する。
 3. Codex liveは公式preview参加・認証・ツール禁止・正解/秘密の読取隔離が成立した後に検証。Pythonコード隔離と混同しない。
 
@@ -57,3 +57,6 @@ Windows Actionsで直接ハッシュ取得2件が失敗したため、CPython 3.
 今回の実装コミット`b3a1e3c`は[Actions #19](https://github.com/Lye-0/benchmark-forge/actions/runs/38428179630)でWindows/Linux両方成功。次の利用者操作は上記の2問による実GPU確認。到達7/7（Phase 6）、正式Standard・実測校正・後続拡張の完了とは区別します。
 
 2026-10-14 JST: 利用者のWindows/Ollama/RTX 5070 LaptopでGPU連続計測を確認（2問完了、201標本、欠測1回から継続）。GPU実機確認のための再実行は不要。ランの応答受領と事前の接続確認を区別する表示を追加。次の実機候補は任意バックエンドのTransformersであり、利用者が保持するsafetensorsモデルの有無を確認する。未取得なら自動ダウンロードやライセンス承諾はしない。
+
+
+2026-10-14 JST 最新: WSL2/CUDAのQwen3-0.6Bで2問を実行し、先頭の思考チャネルと最終回答を分離する修正を実機再検証。1/2正解、エラー0、両問EOS終了、元出力・全生成トークン数を保持。セット/結果/試行/採点/GPU集計/MarkdownとJSONLを照合済み。修正ef07622のActions #22も成功。通常GPU評価の繰り返しは不要。次のコード実行評価はDockerを必要とするため、環境変更を抑える利用者の希望に従い、新規導入せず保留/既存Dockerで確認/導入方法検討の選択待ち。到達7/7、正式Standardや長期研究項目の完了とは区別する。

@@ -216,3 +216,16 @@ WindowsではNumPyの構成ファイルに対するSmart App Control通知があ
 到達 **7/7（Phase 6・未完了）**。次の利用者操作は修正版への更新後、同じセットを新しいランで2問実行してMarkdown/JSONLを共有すること。モデルやライブラリの再取得、旧ランの削除、Windows保護設定の変更は不要です。Codex live、正式Standardと実測校正、長期拡張の未完了条件は維持します。
 
 修正検証: Python **261 passed / 6 skipped**、Web **18 passed**、E2E **4 passed**、Ruff lint/format・mypy・TypeScript/Vite・秘密情報ガード成功。思考チャネル未完了、非対象モデル/回答内のタグ保持、EOSと上限の優先順位、元出力の保存と概要からの除外、旧方式との比較拒否を検証。GPU集計は全指標を結果から再計算しMarkdown/JSONLとの完全一致を確認。前回表示改善`d2ac20f`のActions #21はWindows/Linux両方の成功を確認済み。今回の修正版は別途CI対象です。
+
+
+## Qwen3回答分離の実機再検証完了（2026-10-14 JST）
+
+利用者提供のrun-f5c98a2a614d4c3aaf34ff10で、修正版のWSL2/CUDA実推論を確認しました。前回と同じセットhash・問題・モデル設定で2問完了、1問正解/1問誤答、エラー・タイムアウト・無回答は0。両結果でresponse_text_policy=qwen3-thinking-v1、thinking_complete=true、done_reason=stop、backend_response_received=trueを記録しています。
+
+一次方程式の最終回答は4で正解。合同条件は解なしという誤答（参照解69）。思考を含むmetrics.raw_outputは前回のanswerと2問とも完全一致し、全生成トークン数270/1802も維持。これはこの2実行の観測であり、GPU推論全般の決定性保証ではありません。採点基準を緩和せず、モデルの応答の変化ではなくチャネル分離の修正を確認できました。旧ランと新ランの分離方式が異なるため、比較機能が直接比較を拒否することも提出データで検証しました。
+
+セット再生成hash/全問題、結果と試行履歴、最終回答の再抽出と採点、応答受領/終了理由/全リソース集計、MarkdownのJSONブロックとJSONLの一致を照合。GPU標本79件・取得失敗1回、その後の継続を確認。2問の回答処理時間合計81.090秒。ワーカーのCUDA allocator観測Peak最大1,447,970,816 bytes。起動時の構成取得タイムアウトは残っていますが、推論と連続取得の成功とは区別します。計測1回の失敗原因は共通メッセージから断定しません。
+
+修正コミットef07622の[Actions #22](https://github.com/Lye-0/benchmark-forge/actions/runs/38508009368)は成功。提出ファイル・個人パス・生回答・GPU UUIDはGitや通常DBへ取り込まず、照合証跡はGit外のscratchへ保存しました。Qwen3回答分離とWSL/CUDAの2問の再実行は不要です。
+
+到達 **7/7（Phase 6・未完了）**。次の実機候補はコード生成評価の隔離実行ですが、Dockerは任意です。利用者の環境を最小限に保つ方針に従い、Dockerを新規導入しない保留、既存WSL Dockerでの確認、導入/削除方法の検討のどれにするかを確認中。新規インストールや保護機能の無効化は行いません。コード評価の保留は通常評価を妨げません。Windows TransformersのSmart App Control対応、Codex liveの認証/隔離、正式Standardと実測校正、研究上の長期拡張は別の未完了項目です。
