@@ -82,6 +82,7 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
                         "streaming",
                         "gpu_sampling",
                         "inference_seed",
+                        "device",
                     )
                 },
                 ensure_ascii=False,
@@ -90,6 +91,10 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
             "```",
             "",
             f"実行状態: {report.get('status', 'N/A')} / {'暫定' if report.get('provisional', True) else '確定'}",
+            "回答の分離方式: "
+            + ", ".join(
+                report.get("response_text_policies") or ["backend-defined / 旧記録は未記録"]
+            ),
             "",
             "| 結果 | 件数 |",
             "|---|---:|",

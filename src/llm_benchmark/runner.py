@@ -103,6 +103,11 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
         "completion_rate": sum(r.status in {"correct", "incorrect"} for r in results) / total,
         "status_counts": dict(status),
         "output_diagnostics": output_summary(results),
+        "response_text_policies": sorted(
+            {r.metrics.get("response_text_policy", "decoded-v1") for r in results}
+        )
+        if run["model"]["backend"] == "transformers"
+        else [],
         "by_origin": by_origin,
         "by_category": by_category,
         "by_difficulty": by_difficulty,
@@ -169,6 +174,17 @@ def comparison(reports: list[dict]) -> dict:
     if any(r.get("model_identity_changed", False) for r in reports):
         comparable = False
         warnings.append("実行途中でモデル識別情報が変わったランを含むため直接比較できません。")
+    transformer_policies = {
+        policy
+        for r in reports
+        if r["model"]["backend"] == "transformers"
+        for policy in r.get("response_text_policies", ["decoded-v1"])
+    }
+    if len(transformer_policies) > 1:
+        comparable = False
+        warnings.append(
+            "Transformersの思考・回答の分離方式が異なるため、能力スコアを直接比較できません。"
+        )
     if any(r["test_only"] for r in reports):
         warnings.append("Mock結果はソフトウェア診断です。正式なモデルランキングには含めません。")
     if any(r["provisional"] for r in reports):

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from llm_benchmark.domain import ModelConfig, PublicProblem, Response
 from llm_benchmark.platform_support import peak_ram
+from llm_benchmark.transformers_output import separate_response, termination_reason
 
 
 def infer(config: ModelConfig, problem: PublicProblem) -> Response:
@@ -31,6 +32,7 @@ def infer(config: ModelConfig, problem: PublicProblem) -> Response:
     if config.device == "cuda":
         torch.cuda.synchronize()
     load_seconds = time.perf_counter() - started
+    prompt = problem.prompt
     if tokenizer.chat_template:
         prompt = tokenizer.apply_chat_template(
             [{"role": "user", "content": problem.prompt}],
@@ -63,11 +65,19 @@ def infer(config: ModelConfig, problem: PublicProblem) -> Response:
     text = tokenizer.decode(tokens, skip_special_tokens=True)
     if len(text) > 200_000:
         raise ValueError("Output too large")
+    text, output_metrics = separate_response(
+        text, model_type=getattr(model.config, "model_type", ""), prompt=prompt
+    )
+    token_ids = tokens.tolist() if hasattr(tokens, "tolist") else list(tokens)
+    output_metrics["done_reason"] = termination_reason(
+        token_ids, model.generation_config.eos_token_id, config.max_tokens
+    )
     ram_bytes, ram_scope = peak_ram()
     return Response(
         text=text,
         output_tokens=len(tokens),
         metrics={
+            **output_metrics,
             "load_seconds": load_seconds,
             "generation_seconds": generation_seconds,
             "peak_ram_bytes": ram_bytes,

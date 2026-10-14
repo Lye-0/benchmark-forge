@@ -188,3 +188,30 @@ Hugging Faceキャッシュなら `models--Qwen--.../snapshots/<版>/` が候補
 WSLであることと対象の保存先が確認できた後、Ubuntu側から `/mnt/c/...` の新しいフォルダーへ `cp -rL` などでリンク先の実体を含めてコピーします。既存フォルダーへの上書きや元ファイルの移動は行いません。Windowsの通常PythonにUbuntuの仮想環境をコピーする必要はありません。
 
 その後、上記のCUDA用extraをWindowsのプロジェクト内へ導入し、Torch診断でcuda_availableを確認してから、Transformersのモデル名欄にWindowsパスを登録します。実際のコピーコマンドは、取得形式・UbuntuがWSLか・モデルの保存先を確認したうえで決めてください。
+
+
+## WSL2での任意のTransformers検証
+
+WindowsのSmart App Controlにより依存DLL/PYDがブロックされる場合、保護機能の無効化を既定の対処にしません。利用者の既存WSL2でCUDA利用が確認できる場合は、Windows版とは区別して検証できます。2026-10-14にQwen3-0.6Bの2問で実推論を確認しました。Windows版で同じ経路が検証済みという意味ではありません。
+
+Linuxの環境は `$HOME/benchmark-forge-wsl` に集約します。WSL側のuvが導入済みで、Windows側にビルド済みUIとリポジトリがある場合、WSLの同じターミナルで次を設定します。
+
+```bash
+export FORGE_WSL_ROOT="$HOME/benchmark-forge-wsl"
+mkdir -p "$FORGE_WSL_ROOT"
+export UV_PROJECT_ENVIRONMENT="$FORGE_WSL_ROOT/venv"
+export UV_CACHE_DIR="$FORGE_WSL_ROOT/uv-cache"
+export UV_PYTHON_INSTALL_DIR="$FORGE_WSL_ROOT/python"
+export UV_PYTHON_DOWNLOADS=automatic
+export HF_HOME="$FORGE_WSL_ROOT/hf-cache"
+export FORGE_DATA_DIR="$FORGE_WSL_ROOT/data"
+# cd でWindows側リポジトリへ移動してから実行する
+uv sync --locked --python 3.12 --extra transformers-cuda --no-dev
+uv run --no-sync forge doctor --torch
+# cuda_availableがtrueなら起動。Windows版と保存先・ポートを分ける。
+uv run --no-sync forge serve --port 8001
+```
+
+環境変数はこのシェルだけに適用されます。新しいターミナルでは再設定してから起動してください。既存のWindows用.venvをLinux側で同期しないよう、UV_PROJECT_ENVIRONMENTを必ず指定します。専用フォルダーには結果DBもあるため、削除前に必要な結果をエクスポート/バックアップします。モデルは既存のLinux側ディレクトリを指定し、コピーや再ダウンロードは不要です。Linux用依存関係には別途数GBの取得が発生します。
+
+Qwen3系の思考チャネル対応後は最終回答のみを採点し、分離した元出力をJSONLのmetrics.raw_outputに保持します。旧ランは再採点せず保持し、修正版は同じセットに対して新しいランを作成します。分離方式の異なるランは直接比較できません。モデル登録時の「未検証」は、実行済みランの応答受領と区別してください。

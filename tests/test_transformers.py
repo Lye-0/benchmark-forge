@@ -91,7 +91,8 @@ async def test_worker_termination_and_sanitized_failures(worker_command, mode):
     assert not psutil.pid_exists(processes[0].pid)
 
 
-def test_inference_contract_without_real_model(tmp_path, monkeypatch):
+@pytest.mark.parametrize("model_type", ["other", "qwen3"])
+def test_inference_contract_without_real_model(tmp_path, monkeypatch, model_type):
     torch, transformers = MagicMock(), MagicMock()
     torch.__version__ = "fixture"
     torch.version.cuda = None
@@ -101,8 +102,10 @@ def test_inference_contract_without_real_model(tmp_path, monkeypatch):
     tensor = MagicMock()
     tensor.shape = (1, 3)
     tokenizer.return_value = {"input_ids": tensor}
-    tokenizer.decode.return_value = "fixture response"
+    tokenizer.decode.return_value = "<think>fixture</think>\n\n12"
     model = transformers.AutoModelForCausalLM.from_pretrained.return_value.to.return_value
+    model.config.model_type = model_type
+    model.generation_config.eos_token_id = 8
     model.config.max_position_embeddings = 100
     model.generate.return_value.__getitem__.return_value = [7, 8]
     monkeypatch.setattr(
@@ -114,6 +117,8 @@ def test_inference_contract_without_real_model(tmp_path, monkeypatch):
     )
     torch.manual_seed.assert_called_once_with(12345)
     assert result.output_tokens == 2
+    assert result.metrics["done_reason"] == "stop"
+    assert result.text == ("12" if model_type == "qwen3" else tokenizer.decode.return_value)
     assert result.decode_seconds is None and result.ttft_seconds is None
     assert result.metrics["peak_ram_bytes"] > 0
     assert result.metrics["peak_vram_allocated_bytes"] is None

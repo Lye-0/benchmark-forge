@@ -278,7 +278,7 @@ class Store:
             projection = (
                 "data"
                 if include_payloads
-                else "json_set(json_remove(data,'$.metrics.trace'),'$.answer','','$.reason','')"
+                else "json_set(json_remove(data,'$.metrics.trace','$.metrics.raw_output'),'$.answer','','$.reason','')"
             )
             results = [
                 Result.model_validate_json(r[0])
