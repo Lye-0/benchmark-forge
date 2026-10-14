@@ -234,6 +234,15 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
         return calibration_rows(summarize(store, run_id))
 
+    @app.get("/api/calibration-analysis")
+    def calibration_analysis(ids: str = Query(max_length=1000)):
+        from llm_benchmark.calibration import analyze_calibration
+
+        run_ids = ids.split(",")
+        if not 2 <= len(run_ids) <= 10:
+            raise ValueError("ランを2〜10件指定してください")
+        return analyze_calibration([summarize(store, id) for id in run_ids])
+
     @app.post("/api/holdouts")
     def holdout(value: HoldoutUpload):
         from llm_benchmark.holdout import import_holdout

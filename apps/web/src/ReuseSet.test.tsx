@@ -1,0 +1,22 @@
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { api } from './api';
+import { ReuseSet } from './ReuseSet';
+import type { Model, Run } from './types';
+vi.mock('./api', () => ({ api: vi.fn() }));
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+it('submits the frozen set and only the explicitly selected model without regeneration', async () => {
+  const run = { id: 'old', set_id: 'frozen-old-version', set_hash: 'immutable', total: 2, model: { name: 'First' }, measurement_kind: 'text' } as Run;
+  const model = { model_id: 'second', name: 'Second', capabilities: { available: true } } as Model;
+  const onCreated = vi.fn();
+  vi.mocked(api).mockResolvedValue({ run_ids: ['new'] });
+  render(<ReuseSet runs={[run, { ...run, id: 'code', measurement_kind: 'code' }]} models={[model]} onCreated={onCreated} onError={vi.fn()}/>);
+  expect(screen.getByRole('button')).toBeDisabled();
+  expect(screen.queryByRole('option', { name: /code/ })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('元の実行', { exact: true }), { target: { value: 'old' } });
+  fireEvent.change(screen.getByLabelText('追加評価モデル', { exact: true }), { target: { value: 'second' } });
+  fireEvent.click(screen.getByRole('button'));
+  await waitFor(() => expect(onCreated).toHaveBeenCalledWith('new'));
+  expect(api).toHaveBeenCalledTimes(1);
+  expect(api).toHaveBeenCalledWith('/runs', { set_id: 'frozen-old-version', model_ids: ['second'] });
+});

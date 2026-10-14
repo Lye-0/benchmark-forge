@@ -61,6 +61,9 @@ def calibration_rows(report: dict) -> list[dict]:
         or report.get("measurement_kind", "text") != "text"
     ):
         raise ValueError("校正用データには完了した実モデルの能力評価ランが必要です")
+    from collections import Counter
+
+    attempts = Counter(a["idx"] for a in report["attempts"])
     return [
         {
             "run_id": report["id"],
@@ -75,7 +78,8 @@ def calibration_rows(report: dict) -> list[dict]:
             "empirical_difficulty": None,
             "correct": row["correct"],
             "status": row["status"],
-            "attempt_count": sum(a["idx"] == row["index"] for a in report["attempts"]),
+            "attempt_count": attempts[row["index"]],
+            "response_text_policy": row.get("metrics", {}).get("response_text_policy"),
             "visibility": report["set_metadata"].get("visibility", "public"),
         }
         for row in report["results"]

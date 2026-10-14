@@ -75,6 +75,20 @@ test('browser configuration → frozen set → run → logs → comparison', asy
   await page.getByRole('button', { name: '選択したランを比較' }).click();
   await expect(page.getByText('同一問題セット', { exact: true })).toBeVisible();
   await expect(page.getByText('Mock結果はソフトウェア診断です。正式なモデルランキングには含めません。')).toBeVisible();
+  await page.getByRole('button', { name: '選択したランの観測を集計' }).click();
+  await expect(page.getByText('校正用データには完了した実モデルの能力評価ランが必要です')).toBeVisible();
+  await page.getByLabel('元の実行', { exact: true }).selectOption(runIds[0]);
+  await page.getByLabel('追加評価モデル', { exact: true }).selectOption('mock-wrong');
+  const reused = page.waitForResponse(r => r.url().endsWith('/api/runs') && r.request().method() === 'POST');
+  await page.getByRole('button', { name: '保存済みセットで実行', exact: true }).click();
+  const { run_ids: reusedIds } = await (await reused).json() as { run_ids: string[] };
+  expect(reusedIds).toHaveLength(1);
+  expect(reusedIds[0]).not.toBe(runIds[0]);
+  const originalRun = await (await request.get(`/api/runs/${runIds[0]}?detail=false`)).json();
+  const extraRun = await (await request.get(`/api/runs/${reusedIds[0]}?detail=false`)).json();
+  expect(extraRun.set_hash).toBe(originalRun.set_hash);
+  expect(extraRun.model.model_id).toBe('mock-wrong');
+  expect(originalRun.correct).toBe(100);
 });
 
 test('mobile navigation and unsupported categories', async ({ page }) => {

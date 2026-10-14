@@ -281,6 +281,24 @@ def calibration(run_id: str, output: Path):
         raise typer.Exit(1) from exc
 
 
+@app.command("calibration-analysis")
+def calibration_analysis(run_ids: str, output: Path):
+    """同じセットの実モデル2〜10件を記述集計。校正済み難易度には変換しない。"""
+    from llm_benchmark.calibration import analyze_calibration
+
+    try:
+        ids = run_ids.split(",")
+        if not 2 <= len(ids) <= 10:
+            raise ValueError("ランIDをカンマ区切りで2〜10件指定してください")
+        db = store()
+        result = analyze_calibration([summarize(db, id) for id in ids])
+        with output.open("x", encoding="utf-8") as file:
+            json.dump(result, file, ensure_ascii=False, indent=2)
+    except (ValueError, KeyError, OSError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+
 @app.command("speed-probe")
 def speed_probe(input_repetitions: int = 100, output_repetitions: int = 32, repetitions: int = 3):
     """能力評価と区別した速度試験セットを確定。forge runで評価可能。"""
