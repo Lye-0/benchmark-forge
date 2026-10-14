@@ -141,8 +141,10 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     def registry():
         return {
             "categories": registry_tree(),
-            "generator_count": len(REGISTRY),
-            "covered_categories": len({g.category_id for g in REGISTRY.values()}),
+            "generator_count": sum(g.status == "verified" for g in REGISTRY.values()),
+            "covered_categories": len(
+                {g.category_id for g in REGISTRY.values() if g.status == "verified"}
+            ),
             "total_categories": 16,
             "difficulty_calibrated": False,
         }

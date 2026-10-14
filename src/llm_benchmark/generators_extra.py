@@ -121,24 +121,33 @@ def register_extra(register, size):
         "二つの記録を結ぶ根拠",
         "relational-evidence-selection",
         "json",
+        version="1.1.0",
     )
     def evidence(r, d):
         n = size(d, 3, 18)
         people = r.sample(range(100, 999), n)
         places = r.sample(range(100, 999), n)
+        record_ids = [f"doc-{value:08x}" for value in r.sample(range(2**32), 2 * n)]
         docs = []
         for i in range(n):
             docs.extend(
                 [
-                    {"id": f"A{i}", "text": f"人物{people[i]}の担当品は品物{i}。"},
-                    {"id": f"B{i}", "text": f"品物{i}の保管場所は倉庫{places[i]}。"},
+                    {"id": record_ids[2 * i], "text": f"人物{people[i]}の担当品は品物{i}。"},
+                    {"id": record_ids[2 * i + 1], "text": f"品物{i}の保管場所は倉庫{places[i]}。"},
                 ]
             )
         target = r.randrange(n)
         r.shuffle(docs)
+        person = f"人物{people[target]}"
+        person_record = next(doc for doc in docs if doc["text"].startswith(person + "の"))
+        item = person_record["text"].split("は", 1)[1].removesuffix("。")
+        item_record = next(doc for doc in docs if doc["text"].startswith(item + "の"))
         return (
-            {"documents": docs, "person": f"人物{people[target]}"},
-            {"place": f"倉庫{places[target]}", "evidence": [f"A{target}", f"B{target}"]},
+            {"documents": docs, "person": person},
+            {
+                "place": item_record["text"].split("は", 1)[1].removesuffix("。"),
+                "evidence": [person_record["id"], item_record["id"]],
+            },
             'personの担当品の保管場所を記録から特定し、{"place":場所,"evidence":[人物の記録ID,品物の記録ID]}で答えてください。',
             {"documents": len(docs), "joins": 1},
         )

@@ -24,7 +24,8 @@ def test_reproducibility_reference_and_public_boundary(generator):
 
 def test_fixed_catalogue_integrity_and_reference():
     fixed = fixed_catalogue()
-    assert len(fixed) == 480
+    assert len(fixed) == 20 * len(REGISTRY)
+    assert {p.generator_id for p in fixed} == set(REGISTRY)
     for p in fixed:
         g = REGISTRY[p.generator_id]
         assert p == g.generate(p.seed, p.target_difficulty, "fixed")
@@ -101,7 +102,9 @@ def test_registry_and_preview_presets():
     for preset in presets():
         assert build_set(SetConfig.model_validate(preset["config"])).profile_version == "Preview v1"
     with pytest.raises(SetUnavailable, match="Standard"):
-        build_set(SetConfig(generator_ids=list(REGISTRY), count=24, profile="Standard v1"))
+        build_set(
+            SetConfig(generator_ids=list(REGISTRY), count=len(REGISTRY), profile="Standard v1")
+        )
 
 
 @pytest.mark.parametrize(
@@ -125,6 +128,8 @@ def test_invalid_config(patch):
         ("2.50000001", AnswerSpec(expected=2.5, type="number", tolerance=1e-7), True),
         ("NaN", AnswerSpec(expected=0, type="number"), False),
         ("1e100000", AnswerSpec(expected=1, type="number"), False),
+        ("1e1000000", AnswerSpec(expected=1, type="number"), False),
+        ("-1e999999999", AnswerSpec(expected=1, type="number"), False),
         ("答えは3", AnswerSpec(expected=3, type="number"), False),
         ('{"a":1,"a":2}', AnswerSpec(expected={"a": 2}, type="json"), False),
         ('{"a":true}', AnswerSpec(expected={"a": 1}, type="json"), False),

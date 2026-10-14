@@ -1,0 +1,136 @@
+{
+  "scope": "Single fresh process per count; synthetic math.expression, seed42, dynamic only; generator expansion and grader1.1.0 introduced after this isolated optimization measurement. Not model performance.",
+  "before": [
+    {
+      "python": "3.12.14",
+      "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+      "count": 100,
+      "seed": 42,
+      "fixed_ratio": 0.0,
+      "selection": "math.expression",
+      "elapsed_seconds": 0.010708,
+      "peak_rss_bytes": 25681920,
+      "set_hash": "4eff081323df89d45d9f09c161756602d8abe69f692cc133fbd4c0e9b2f32361"
+    },
+    {
+      "python": "3.12.14",
+      "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+      "count": 1000,
+      "seed": 42,
+      "fixed_ratio": 0.0,
+      "selection": "math.expression",
+      "elapsed_seconds": 0.111263,
+      "peak_rss_bytes": 31969280,
+      "set_hash": "3b74dba71af05364949edf72235606eef95132c522cf84173d93795b3164928e"
+    },
+    {
+      "python": "3.12.14",
+      "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+      "count": 8000,
+      "seed": 42,
+      "fixed_ratio": 0.0,
+      "selection": "math.expression",
+      "elapsed_seconds": 0.838388,
+      "peak_rss_bytes": 80605184,
+      "set_hash": "22033d8046d482ecf6020aa627faa022f9be58b7c8cea126d865fd7467dd8cf3"
+    }
+  ],
+  "after": [
+    {
+      "python": "3.12.14",
+      "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+      "count": 100,
+      "seed": 42,
+      "fixed_ratio": 0.0,
+      "selection": "math.expression",
+      "elapsed_seconds": 0.011643,
+      "peak_rss_bytes": 25550848,
+      "set_hash": "4eff081323df89d45d9f09c161756602d8abe69f692cc133fbd4c0e9b2f32361"
+    },
+    {
+      "python": "3.12.14",
+      "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+      "count": 1000,
+      "seed": 42,
+      "fixed_ratio": 0.0,
+      "selection": "math.expression",
+      "elapsed_seconds": 0.095202,
+      "peak_rss_bytes": 28303360,
+      "set_hash": "3b74dba71af05364949edf72235606eef95132c522cf84173d93795b3164928e"
+    },
+    {
+      "python": "3.12.14",
+      "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+      "count": 8000,
+      "seed": 42,
+      "fixed_ratio": 0.0,
+      "selection": "math.expression",
+      "elapsed_seconds": 0.799362,
+      "peak_rss_bytes": 52031488,
+      "set_hash": "22033d8046d482ecf6020aa627faa022f9be58b7c8cea126d865fd7467dd8cf3"
+    }
+  ],
+  "lifecycle": {
+    "python": "3.12.14",
+    "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+    "fixture": "math.expression dynamic; synthetic alternating correct/incorrect; no model",
+    "count": 8000,
+    "set_hash": "22033d8046d482ecf6020aa627faa022f9be58b7c8cea126d865fd7467dd8cf3",
+    "seed": 42,
+    "completed": 8000,
+    "correct": 4000,
+    "denominator": 8000,
+    "accuracy": 0.5,
+    "attempts": 8002,
+    "archive_records": 24003,
+    "archive_parts": 22,
+    "metrics": {
+      "generation": {
+        "seconds": 0.555844,
+        "rss_bytes": 62210048,
+        "process_peak_rss_bytes": 63082496
+      },
+      "save_set": {
+        "seconds": 0.094115,
+        "rss_bytes": 64487424,
+        "process_peak_rss_bytes": 66191360
+      },
+      "first_half_writes": {
+        "seconds": 2.217892,
+        "rss_bytes": 64757760,
+        "process_peak_rss_bytes": 66191360
+      },
+      "reopen_recover": {
+        "seconds": 0.555626,
+        "rss_bytes": 95834112,
+        "process_peak_rss_bytes": 101548032
+      },
+      "resume_writes": {
+        "seconds": 2.410588,
+        "rss_bytes": 95838208,
+        "process_peak_rss_bytes": 101548032
+      },
+      "summary_detail_false": {
+        "seconds": 0.304581,
+        "rss_bytes": 101580800,
+        "process_peak_rss_bytes": 107257856
+      },
+      "all_log_pages_50": {
+        "seconds": 0.284312,
+        "rss_bytes": 101670912,
+        "process_peak_rss_bytes": 107257856
+      },
+      "split_archive": {
+        "seconds": 0.784907,
+        "rss_bytes": 101761024,
+        "process_peak_rss_bytes": 107257856
+      },
+      "verify_archive": {
+        "seconds": 0.002265,
+        "rss_bytes": 101761024,
+        "process_peak_rss_bytes": 107257856
+      }
+    },
+    "limits": "Single-process storage fixture, not scheduler or multi-day endurance; all problems retained during profiling."
+  }
+}

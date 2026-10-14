@@ -1,14 +1,35 @@
 import json
 import math
 import re
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException
 
 from llm_benchmark.domain import AnswerSpec, Grade, canonical
 
-GRADER_VERSION = "1.0.0"
+GRADER_VERSION = "1.1.0"
 
 
-def grade(answer: str, spec: AnswerSpec) -> Grade:
+def _json_equal(actual, expected) -> bool:
+    """Compare JSON values without rounding numbers or equating booleans with 0/1."""
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return type(actual) is type(expected) and actual == expected
+    numeric = (int, float, Decimal)
+    if isinstance(actual, numeric) and isinstance(expected, numeric):
+        left, right = Decimal(str(actual)), Decimal(str(expected))
+        return left.is_finite() and right.is_finite() and left == right
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        return actual.keys() == expected.keys() and all(
+            _json_equal(actual[key], expected[key]) for key in actual
+        )
+    if isinstance(actual, list) and isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            _json_equal(a, b) for a, b in zip(actual, expected, strict=True)
+        )
+    return type(actual) is type(expected) and actual == expected
+
+
+def grade(answer: str, spec: AnswerSpec, grader_version: str = GRADER_VERSION) -> Grade:
+    if grader_version not in {"1.0.0", "1.1.0"}:
+        raise ValueError(f"Unsupported grader version: {grader_version}")
     text = answer.strip()
     if spec.type == "text":
         # Strict format tasks preserve inner whitespace and casing.
@@ -29,7 +50,7 @@ def grade(answer: str, spec: AnswerSpec) -> Grade:
             return Grade(
                 correct=correct, reason="許容誤差内" if correct else "数値が不一致", parsed=parsed
             )
-        except (InvalidOperation, OverflowError):
+        except (DecimalException, OverflowError):
             return Grade(correct=False, reason="数値を解釈できません")
     try:
 
@@ -44,13 +65,23 @@ def grade(answer: str, spec: AnswerSpec) -> Grade:
         def no_constants(value):
             raise ValueError("non-finite JSON")
 
-        parsed = json.loads(text, object_pairs_hook=no_duplicates, parse_constant=no_constants)
-        # Canonical comparison preserves bool vs number, rejects surplus fields, allows key reordering.
-        correct = canonical(parsed) == canonical(spec.expected)
+        if grader_version == "1.0.0":
+            parsed = json.loads(text, object_pairs_hook=no_duplicates, parse_constant=no_constants)
+            # Preserve the historical lexical numeric comparison for frozen sets.
+            correct = canonical(parsed) == canonical(spec.expected)
+        else:
+            # Decimal parsing preserves fractional/exponent spellings of large integers.
+            parsed = json.loads(
+                text,
+                object_pairs_hook=no_duplicates,
+                parse_constant=no_constants,
+                parse_float=Decimal,
+            )
+            correct = _json_equal(parsed, spec.expected)
         return Grade(
             correct=correct,
             reason="構造化回答が一致" if correct else "JSONの値または型が不一致",
             parsed=parsed,
         )
-    except (ValueError, TypeError, RecursionError):
+    except (ValueError, TypeError, RecursionError, DecimalException):
         return Grade(correct=False, reason="有効な重複キーのないJSONが必要です")

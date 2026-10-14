@@ -468,7 +468,11 @@ class Scheduler:
                         sandbox_status=code_result.status, sandbox_exit_code=code_result.exit_code
                     )
                     if code_result.status == "ok":
-                        graded = grade(code_result.stdout.strip(), problem.answer_spec)
+                        graded = grade(
+                            code_result.stdout.strip(),
+                            problem.answer_spec,
+                            frozen["grader_version"],
+                        )
                         correct, reason = graded.correct, graded.reason
                         outcome = "correct" if correct else "incorrect"
                     else:
@@ -477,7 +481,7 @@ class Scheduler:
                 elif not answer.strip() and problem.answer_spec.expected != "":
                     outcome, reason = "empty", "無回答"
                 else:
-                    result = grade(answer, problem.answer_spec)
+                    result = grade(answer, problem.answer_spec, frozen["grader_version"])
                     correct, reason = result.correct, result.reason
                     outcome = "correct" if correct else "incorrect"
             except asyncio.CancelledError:

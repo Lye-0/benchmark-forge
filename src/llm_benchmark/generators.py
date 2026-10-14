@@ -43,7 +43,7 @@ class Generator:
     answer_type: str
     build: Builder
     version: str = "1.0.0"
-    status: str = "verified"
+    status: Literal["verified", "experimental", "unavailable"] = "verified"
     tags: tuple[str, ...] = ("日本語理解", "決定的生成")
 
     def metadata(self) -> dict[str, Any]:
@@ -63,6 +63,8 @@ class Generator:
     def generate(
         self, seed: int, difficulty: float, origin: Literal["fixed", "dynamic"] = "dynamic"
     ) -> Problem:
+        if self.status == "unavailable":
+            raise ValueError("この生成器は利用できません")
         if not 0 <= difficulty <= 100 or origin not in ("fixed", "dynamic"):
             raise ValueError("生成パラメーターが範囲外です")
         difficulty = float(difficulty)
@@ -93,6 +95,7 @@ class Generator:
             prompt=prompt,
             answer_spec=spec,
             grading_type=self.answer_type,
+            verification=self.status,
             origin=origin,
             template=self.template,
             features=features,
@@ -252,16 +255,88 @@ def trace(r: random.Random, d: float):
     )
 
 
-@register("code.debug", "04", "デバッグ", "境界条件の修正選択", "inclusive-range-fix", "text")
+@register(
+    "code.debug",
+    "04",
+    "デバッグ",
+    "複数条件のループ修正",
+    "finite-domain-loop-repair",
+    "text",
+    version="1.1.0",
+)
 def debug(r: random.Random, d: float):
-    labels = ["A", "B", "C", "D"]
-    options = ["range(1, n + 1)", "range(0, n)", "range(1, n)", "range(2, n + 1)"]
-    r.shuffle(options)
+    filter_count = size(d, 0, 3)
+    step = r.randint(1, size(d, 2, 6))
+    exclusions = [[m, r.randrange(m)] for m in r.sample([3, 5, 7, 11, 13], filter_count)]
+    lower_inclusive, upper_inclusive = r.choice([True, False]), r.choice([True, False])
+    cases = [[r.randint(-30, 30), r.randint(35, 65)] for _ in range(size(d, 3, 10))]
+    correct: dict[str, Any] = {
+        "start_offset": 0 if lower_inclusive else 1,
+        "stop_offset": 1 if upper_inclusive else 0,
+        "step": step,
+        "exclude": exclusions,
+    }
+
+    def output(option, case):
+        a, b = case
+        return [
+            x
+            for x in range(a + option["start_offset"], b + option["stop_offset"], option["step"])
+            if all(x % modulus != residue for modulus, residue in option["exclude"])
+        ]
+
+    desired = [
+        [
+            x
+            for x in range(a - 2, b + 3)
+            if (x >= a if lower_inclusive else x > a)
+            and (x <= b if upper_inclusive else x < b)
+            and (x - a - correct["start_offset"]) % step == 0
+            and all(x % m != v for m, v in exclusions)
+        ]
+        for a, b in cases
+    ]
+    candidates = []
+    mutations: list[tuple[str, list[Any]]] = [
+        ("start_offset", [-2, -1, 0, 1, 2]),
+        ("stop_offset", [-2, -1, 0, 1, 2]),
+        ("step", list(range(1, 9))),
+        ("exclude", [exclusions[:i] + exclusions[i + 1 :] for i in range(filter_count)]),
+    ]
+    for field, values in mutations:
+        for value in values:
+            candidate = {**correct, field: value}
+            if [output(candidate, case) for case in cases] != desired:
+                candidates.append(candidate)
+    count = size(d, 3, 8)
+    selected = [correct, *r.sample(candidates, count - 1)]
+    r.shuffle(selected)
+    options = dict(zip("ABCDEFGH"[:count], selected, strict=True))
+    valid = [
+        label
+        for label, option in options.items()
+        if [output(option, case) for case in cases] == desired
+    ]
+    assert len(valid) == 1
     return (
-        {"n": size(d), "options": dict(zip(labels, options, strict=True))},
-        labels[options.index("range(1, n + 1)")],
-        "n >= 1 とする。sum(range(...)) で1からnまで両端を含む総和を計算したい。正しい range の選択肢の記号1文字を答えてください。",
-        {"boundary_cases": 2, "n": size(d)},
+        {
+            "contract": {
+                "lower_inclusive": lower_inclusive,
+                "upper_inclusive": upper_inclusive,
+                "step": step,
+                "exclude": exclusions,
+            },
+            "cases": cases,
+            "options": options,
+        },
+        valid[0],
+        "各case=[a,b]に対しcontractが指定する下端/上端の包含条件で整数を選び、許可された最初の整数a（下端を含む場合）またはa+1を起点にstep刻みで昇順に列挙します。ただしexcludeの[法,余り]のどれかに一致する整数は除外。負数の剰余も0以上法未満です。修正候補optionを次の制限コードに当てはめ、全casesで仕様どおりのリストを返す唯一の記号1文字を答えてください。実行は不要です。\n result=[]\n for x in range(a+option.start_offset, b+option.stop_offset, option.step):\n     if all(x % m != v for [m,v] in option.exclude): result.append(x)\nrangeは開始を含み終了を含みません。空のexcludeなら全て通過。",
+        {
+            "cases": len(cases),
+            "options": count,
+            "conditions": 3 + filter_count,
+            "exclusion_rules": filter_count,
+        },
     )
 
 
@@ -348,21 +423,72 @@ def state(r: random.Random, d: float):
     )
 
 
-@register("tool.select", "14", "テキスト型", "模擬APIの選択と引数", "text-tool-schema", "json")
+@register(
+    "tool.select",
+    "14",
+    "テキスト型",
+    "API制約照合と必須引数",
+    "text-api-constraint-matching",
+    "json",
+    version="1.1.0",
+)
 def tool(r: random.Random, d: float):
-    item = f"item-{r.randint(1, size(d, 10, 999))}"
+    attribute_count, argument_count = size(d, 2, 6), size(d, 1, 5)
+    domains = {
+        "operation": ["read", "delete"],
+        "resource": ["inventory", "orders"],
+        "region": ["east", "west", "central"],
+        "consistency": ["strong", "eventual"],
+        "format": ["json", "csv"],
+        "history": ["supported", "unsupported"],
+    }
+    constraints = {key: r.choice(values) for key, values in list(domains.items())[:attribute_count]}
+    constraints["operation"] = "read"
+    arguments = {
+        "item_id": f"item-{r.randrange(1000000)}",
+        "warehouse": f"W{r.randrange(100)}",
+        "as_of": f"2026-10-{r.randint(1, 28):02}",
+        "locale": r.choice(["ja-JP", "en-US"]),
+        "request_id": f"R{r.randrange(1000000)}",
+    }
+    required = r.sample(list(arguments), argument_count)
+    definitions: list[dict[str, Any]] = [{"attributes": constraints.copy(), "required": required}]
+    for key, value in constraints.items():
+        definitions.append(
+            {
+                "attributes": {
+                    **constraints,
+                    key: r.choice([v for v in domains[key] if v != value]),
+                },
+                "required": required[:],
+            }
+        )
+    definitions.append(
+        {"attributes": constraints.copy(), "required": required + ["unavailable_token"]}
+    )
+    r.shuffle(definitions)
+    tools = {
+        f"api_{r.randrange(1000000):06}_{i}": definition for i, definition in enumerate(definitions)
+    }
+    suitable = [
+        name
+        for name, definition in tools.items()
+        if all(definition["attributes"].get(key) == value for key, value in constraints.items())
+        and all(key in arguments for key in definition["required"])
+    ]
+    assert len(suitable) == 1
     return (
+        {"constraints": constraints, "available_arguments": arguments, "tools": tools},
         {
-            "item_id": item,
-            "tools": {
-                "inventory.lookup": {"item_id": "string"},
-                "inventory.delete": {"item_id": "string"},
-                "clock.now": {},
-            },
+            "name": suitable[0],
+            "arguments": {key: arguments[key] for key in tools[suitable[0]]["required"]},
         },
-        {"name": "inventory.lookup", "arguments": {"item_id": item}},
-        '在庫を参照するために呼ぶべきツール1つを {"name":ツール名,"arguments":引数} のJSONで答えてください。実際には呼び出しません。削除は禁止。',
-        {"tool_count": 3, "argument_count": 1},
+        'これはテキストだけのAPI選択問題で、実際には呼び出しません。constraintsの全属性に厳密に一致し、requiredの全引数をavailable_argumentsから供給できる唯一のAPIを選択してください。全引数の型はstring。引数の推測・変換・補完は禁止です。API名自体に意味はありません。{"name":API名,"arguments":必須引数だけを値とともに含むオブジェクト}で答えてください。余分な引数は出力しません。',
+        {
+            "tool_count": len(tools),
+            "argument_count": argument_count,
+            "constraints": attribute_count,
+        },
     )
 
 
@@ -375,7 +501,11 @@ def registry_tree() -> list[dict[str, Any]]:
             {
                 "id": id,
                 "name": name,
-                "status": "verified" if generators else "unavailable",
+                "status": "verified"
+                if any(g.status == "verified" for g in generators)
+                else "experimental"
+                if any(g.status == "experimental" for g in generators)
+                else "unavailable",
                 "subcategories": [
                     {
                         "id": sub,
@@ -392,3 +522,11 @@ def registry_tree() -> list[dict[str, Any]]:
 from llm_benchmark.generators_extra import register_extra  # noqa: E402
 
 register_extra(register, size)
+
+from llm_benchmark.generators_language import register_language  # noqa: E402
+from llm_benchmark.generators_reasoning import register_reasoning  # noqa: E402
+from llm_benchmark.generators_systems import register_systems  # noqa: E402
+
+register_language(register, size)
+register_reasoning(register, size)
+register_systems(register, size)

@@ -1,10 +1,12 @@
+import hashlib
 import math
 import random
 from datetime import UTC, datetime
 from importlib.resources import files
 
-from llm_benchmark.domain import FrozenSet, Problem, SetConfig, digest
+from llm_benchmark.domain import FrozenSet, Problem, SetConfig, canonical, digest
 from llm_benchmark.generators import REGISTRY
+from llm_benchmark.grading import GRADER_VERSION
 from llm_benchmark.quality import equivalence_key, quality_report
 
 
@@ -19,6 +21,36 @@ def fixed_catalogue() -> list[Problem]:
         for line in resource.read_text(encoding="utf-8").splitlines()
         if line
     ]
+
+
+def _set_digest(
+    config: SetConfig,
+    problems: list[Problem],
+    weights: dict[str, float],
+    quality_method: str,
+    grader_version: str = "1.0.0",
+) -> str:
+    """Hash the historical canonical payload, holding only one problem dump at a time.
+
+    Top-level keys retain canonical sorted order. Each item uses the same JSON
+    encoder as digest(), preserving float, Unicode and nested-key semantics.
+    """
+    hasher = hashlib.sha256()
+    hasher.update(b'{"config":')
+    hasher.update(canonical(config.model_dump()).encode())
+    hasher.update(b',"grader_version":')
+    hasher.update(canonical(grader_version).encode())
+    hasher.update(b',"problems":[')
+    for index, problem in enumerate(problems):
+        if index:
+            hasher.update(b",")
+        hasher.update(canonical(problem.model_dump()).encode())
+    hasher.update(b'],"profile_version":"Preview v1","quality_method":')
+    hasher.update(canonical(quality_method).encode())
+    hasher.update(b',"weights":')
+    hasher.update(canonical(weights).encode())
+    hasher.update(b"}")
+    return hasher.hexdigest()
 
 
 def build_set(config: SetConfig) -> FrozenSet:
@@ -51,7 +83,18 @@ def build_set(config: SetConfig) -> FrozenSet:
     fixed_count = math.floor(config.count * config.fixed_ratio + 0.5)
     # Spread fixed origins over the shuffled allocation; never silently replace missing fixed items.
     fixed_indices = set(rng.sample(range(config.count), fixed_count))
-    catalogue = fixed_catalogue() if fixed_count else []
+    # Preserve bank order inside each bucket: shuffle consumes the same RNG
+    # sequence and equal-distance ties resolve exactly as before.
+    catalogue: dict[str, list[tuple[Problem, str, str]]] = {}
+    if fixed_count:
+        for problem in fixed_catalogue():
+            if (
+                problem.generator_id in generator_counts
+                and config.difficulty_min <= problem.target_difficulty <= config.difficulty_max
+            ):
+                catalogue.setdefault(problem.generator_id, []).append(
+                    (problem, digest(problem.prompt), equivalence_key(problem))
+                )
     used: set[str] = set()
     equivalent: set[str] = set()
     problems: list[Problem] = []
@@ -63,32 +106,33 @@ def build_set(config: SetConfig) -> FrozenSet:
         )
         if index in fixed_indices:
             candidates = [
-                p
-                for p in catalogue
-                if p.generator_id == g.id
-                and config.difficulty_min <= p.target_difficulty <= config.difficulty_max
-                and digest(p.prompt) not in used
-                and equivalence_key(p) not in equivalent
+                entry
+                for entry in catalogue.get(g.id, [])
+                if entry[1] not in used and entry[2] not in equivalent
             ]
             if not candidates:
                 raise SetUnavailable(
                     f"固定問題不足: {g.name} / 難易度{config.difficulty_min}〜{config.difficulty_max}。問題数・範囲・比率を調整してください"
                 )
             rng.shuffle(candidates)
-            p = min(candidates, key=lambda p: abs(p.target_difficulty - target))
+            p, prompt_hash, semantic_hash = min(
+                candidates, key=lambda entry: abs(entry[0].target_difficulty - target)
+            )
         else:
             for _ in range(100):
                 p = g.generate(rng.randrange(2**32), target)
-                if digest(p.prompt) in used:
+                prompt_hash = digest(p.prompt)
+                semantic_hash = equivalence_key(p)
+                if prompt_hash in used:
                     duplicates += 1
-                elif equivalence_key(p) in equivalent:
+                elif semantic_hash in equivalent:
                     semantic_duplicates += 1
                 else:
                     break
             else:
                 raise SetUnavailable(f"重複を避けて十分な問題を作れません: {g.name}")
-        used.add(digest(p.prompt))
-        equivalent.add(equivalence_key(p))
+        used.add(prompt_hash)
+        equivalent.add(semantic_hash)
         problems.append(p)
     rng.shuffle(problems)
     categories = sorted({p.category_id for p in problems})
@@ -105,18 +149,11 @@ def build_set(config: SetConfig) -> FrozenSet:
     quality = quality_report(
         problems, surface_rejected=duplicates, semantic_rejected=semantic_duplicates
     )
-    payload = {
-        "config": config.model_dump(),
-        "problems": [p.model_dump() for p in problems],
-        "weights": weights,
-        "profile_version": "Preview v1",
-        "grader_version": "1.0.0",
-        "quality_method": quality["method"],
-    }
-    hash = digest(payload)
+    hash = _set_digest(config, problems, weights, quality["method"], GRADER_VERSION)
     return FrozenSet(
         set_id=f"set-{hash[:24]}",
         set_hash=hash,
+        grader_version=GRADER_VERSION,
         config=config,
         problems=problems,
         weights=weights,
@@ -135,7 +172,7 @@ def build_set(config: SetConfig) -> FrozenSet:
 
 
 def presets() -> list[dict]:
-    all_ids = list(REGISTRY)
+    all_ids = [g.id for g in REGISTRY.values() if g.status == "verified"]
     return [
         {
             "id": "preview-standard-v1",
@@ -150,7 +187,7 @@ def presets() -> list[dict]:
             "name": "幅広く評価",
             "description": "検証済みの全構造をカバー。",
             "config": SetConfig(
-                generator_ids=all_ids, count=56, profile="preview-wide-v1"
+                generator_ids=all_ids, count=max(56, len(all_ids)), profile="preview-wide-v1"
             ).model_dump(),
         },
         {
@@ -158,7 +195,11 @@ def presets() -> list[dict]:
             "name": "特定分野を深掘り",
             "description": "数学の複数構造を重点的に評価。",
             "config": SetConfig(
-                generator_ids=[g.id for g in REGISTRY.values() if g.category_id == "01"],
+                generator_ids=[
+                    g.id
+                    for g in REGISTRY.values()
+                    if g.category_id == "01" and g.status == "verified"
+                ],
                 count=60,
                 profile="preview-deep-v1",
             ).model_dump(),

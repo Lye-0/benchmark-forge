@@ -101,7 +101,34 @@ def mock_solve(prompt: str) -> str:
             else:
                 answer += v * 2
     elif task == "code.debug":
-        return next(k for k, v in data["options"].items() if v == "range(1, n + 1)")
+        if "contract" not in data:
+            return next(k for k, v in data["options"].items() if v == "range(1, n + 1)")
+        spec = data["contract"]
+        matching = []
+        for label, option in data["options"].items():
+            valid = True
+            for a, b in data["cases"]:
+                first = a + (not spec["lower_inclusive"])
+                last = b - (not spec["upper_inclusive"])
+                wanted = []
+                x = first
+                while x <= last:
+                    if not any(x % m == v for m, v in spec["exclude"]):
+                        wanted.append(x)
+                    x += spec["step"]
+                actual = [
+                    x
+                    for x in range(
+                        a + option["start_offset"], b + option["stop_offset"], option["step"]
+                    )
+                    if not any(x % m == v for m, v in option["exclude"])
+                ]
+                valid = valid and actual == wanted
+            if valid:
+                matching.append(label)
+        if len(matching) != 1:
+            raise ValueError("修正候補が一意ではありません")
+        return matching[0]
     elif task == "data.aggregate":
         answer = dict.fromkeys(["alpha", "beta", "gamma"], 0)
         for row in data["rows"]:
@@ -124,11 +151,59 @@ def mock_solve(prompt: str) -> str:
         for event in data["events"]:
             answer[event["field"]] = event["value"]
     elif task == "tool.select":
-        answer = {"name": "inventory.lookup", "arguments": {"item_id": data["item_id"]}}
+        if "constraints" not in data:
+            answer = {"name": "inventory.lookup", "arguments": {"item_id": data["item_id"]}}
+        else:
+            eligible = []
+            for name, definition in data["tools"].items():
+                mismatches = set(data["constraints"].items()) - set(
+                    definition["attributes"].items()
+                )
+                missing = set(definition["required"]) - set(data["available_arguments"])
+                if not mismatches and not missing:
+                    eligible.append(name)
+            if len(eligible) != 1:
+                raise ValueError("API候補が一意ではありません")
+            name = eligible[0]
+            answer = {
+                "name": name,
+                "arguments": {
+                    key: data["available_arguments"][key] for key in data["tools"][name]["required"]
+                },
+            }
     else:
-        from llm_benchmark.mock_extra import solve
+        from llm_benchmark.mock_extra import solve as solve_extra
+        from llm_benchmark.mock_language import solve as solve_language
+        from llm_benchmark.mock_reasoning import SUPPORTED_IDS
+        from llm_benchmark.mock_reasoning import solve as solve_reasoning
+        from llm_benchmark.mock_systems import solve as solve_systems
 
-        answer = solve(task, data)
+        if task in SUPPORTED_IDS:
+            answer = solve_reasoning(task, data)
+        elif task in {
+            "language.quantifiers",
+            "language.reference",
+            "reading.entailment",
+            "context.policy",
+            "instruction.priority",
+            "dialogue.correction",
+            "robust.injection",
+            "robust.premise",
+        }:
+            answer = solve_language(task, data)
+        elif task in {
+            "cs.round_robin",
+            "cs.routing",
+            "cs.permissions",
+            "data.schema",
+            "data.antijoin",
+            "code.types",
+            "code.bug_tests",
+            "temporal.intersections",
+        }:
+            answer = solve_systems(task, data)
+        else:
+            answer = solve_extra(task, data)
     return canonical(answer)
 
 
