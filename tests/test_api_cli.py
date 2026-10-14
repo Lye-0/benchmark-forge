@@ -265,3 +265,25 @@ def test_delete_registration_preserves_reports_and_does_not_reseed(client):
         ).status_code
         == 403
     )
+
+
+def test_ollama_discovery_route_is_read_only_and_origin_protected(client, monkeypatch):
+    calls = []
+
+    async def discover(endpoint):
+        calls.append(endpoint)
+        return [{"name": "local:tag", "revision": None, "quantization": None, "size_bytes": None}]
+
+    monkeypatch.setattr("llm_benchmark.api.installed_models", discover)
+    before = client.get("/api/models").json()
+    response = client.post("/api/ollama/models", json={"endpoint": "http://127.0.0.1:11435"})
+    assert response.status_code == 200
+    assert response.json()["models"][0]["name"] == "local:tag"
+    assert client.get("/api/models").json() == before
+    assert (
+        client.post(
+            "/api/ollama/models", json={}, headers={"Origin": "https://evil.example"}
+        ).status_code
+        == 403
+    )
+    assert calls == ["http://127.0.0.1:11435"]

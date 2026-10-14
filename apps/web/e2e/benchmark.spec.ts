@@ -206,3 +206,28 @@ test('deletion confirms each target and preserves history after model removal', 
   expect((await request.get(`/api/runs/${id}`)).status()).toBe(404);
   expect((await request.get(`/api/sets/${frozen.set_id}`)).ok()).toBe(true);
 });
+
+test('installed Ollama choices fill registration without saving or overwriting user labels', async ({ page }) => {
+  await page.route('**/api/ollama/models', route => route.fulfill({ json: { models: [
+    { name: 'qwen3:0.6b', revision: 'a'.repeat(64), quantization: 'Q4_K_M', size_bytes: 500000000 },
+    { name: 'gemma:test', revision: 'b'.repeat(64), quantization: 'Q8_0', size_bytes: 1000000000 },
+  ] } }));
+  await page.goto('/#models');
+  const choice = page.getByLabel('インストール済みモデルから入力');
+  await expect(choice).toBeEnabled();
+  await choice.selectOption('qwen3:0.6b');
+  await expect(page.getByLabel('Ollamaのモデル名（タグを含む）')).toHaveValue('qwen3:0.6b');
+  await expect(page.getByLabel('モデルID', { exact: true })).toHaveValue('ollama-qwen3-0.6b');
+  await expect(page.getByLabel('表示名', { exact: true })).toHaveValue('qwen3:0.6b');
+  await expect(page.getByLabel('リビジョン', { exact: true })).toHaveValue('a'.repeat(64));
+  await page.getByLabel('表示名', { exact: true }).fill('自分の表示名');
+  await choice.selectOption('gemma:test');
+  await expect(page.getByLabel('モデルID', { exact: true })).toHaveValue('ollama-gemma-test');
+  await expect(page.getByLabel('表示名', { exact: true })).toHaveValue('自分の表示名');
+  await expect(page.getByLabel('量子化', { exact: true })).toHaveValue('Q8_0');
+  await page.unroute('**/api/ollama/models');
+  await page.route('**/api/ollama/models', route => route.fulfill({ status: 503, json: { detail: 'Ollamaを起動してください' } }));
+  await page.getByRole('button', { name: '候補を再取得' }).click();
+  await expect(page.getByText('Ollamaを起動してください')).toBeVisible();
+  await expect(page.getByLabel('Ollamaのモデル名（タグを含む）')).toBeEnabled();
+});

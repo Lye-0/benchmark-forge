@@ -20,6 +20,7 @@ from llm_benchmark.code_eval import CodeConfig, build_code_set
 from llm_benchmark.domain import ModelConfig, SetConfig, StartRun, StrictModel
 from llm_benchmark.environment import gpu_status, hardware_inventory, torch_status
 from llm_benchmark.generators import REGISTRY, registry_tree
+from llm_benchmark.ollama_discovery import installed_models
 from llm_benchmark.reports import export_report, stream_jsonl
 from llm_benchmark.runner import Scheduler, comparison, summarize
 from llm_benchmark.sandbox import sandbox_status
@@ -170,6 +171,13 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         config = value.config.model_copy(update={"custom": True, "profile": "custom"})
         id = store.save_preset(value.name, config.model_dump())
         return {"id": id}
+
+    class OllamaDiscovery(StrictModel):
+        endpoint: str = Field(default="http://127.0.0.1:11434", max_length=200)
+
+    @app.post("/api/ollama/models")
+    async def discover_ollama(request: OllamaDiscovery):
+        return {"models": await installed_models(request.endpoint)}
 
     @app.get("/api/models")
     def models():

@@ -1,0 +1,20 @@
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { OllamaModels } from './OllamaModels';
+import { api } from './api';
+vi.mock('./api', () => ({ api: vi.fn() }));
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.resetAllMocks(); });
+it('ignores results for an old endpoint and selects a model from the current one', async () => {
+  vi.useFakeTimers();
+  let oldResolve!: (value: unknown) => void;
+  vi.mocked(api).mockReturnValueOnce(new Promise(resolve => { oldResolve = resolve; })).mockResolvedValueOnce({ models: [{ name: 'new:tag', revision: null, quantization: 'Q4', size_bytes: 1024 }] });
+  const select = vi.fn();
+  const view = render(<OllamaModels endpoint="http://127.0.0.1:11434" onSelect={select}/>);
+  await act(async () => vi.advanceTimersByTime(300));
+  view.rerender(<OllamaModels endpoint="http://127.0.0.1:11435" onSelect={select}/>);
+  await act(async () => vi.advanceTimersByTime(300));
+  await act(async () => oldResolve({ models: [{ name: 'old:tag' }] }));
+  expect(screen.queryByRole('option', { name: /old:tag/ })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'new:tag' } });
+  expect(select).toHaveBeenCalledWith(expect.objectContaining({ name: 'new:tag', quantization: 'Q4' }));
+});
