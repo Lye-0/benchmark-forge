@@ -5,7 +5,7 @@ export interface RunProgress { id: string; status: string; completed: number; to
 export class ProgressWatch {
   private signature = '';
   private changedAt: number;
-  constructor(private ids: string[], private startedAt: number, private stallMs = 15000, private deadlineMs = 120000) {
+  constructor(private ids: string[], private startedAt: number, private stallMs = 15000, private deadlineMs = 120000, private target: 'completed' | 'paused' = 'completed') {
     this.changedAt = startedAt;
   }
   check(now: number): void {
@@ -19,11 +19,11 @@ export class ProgressWatch {
       return row;
     });
     const detail = JSON.stringify(selected);
-    if (selected.some(r => !['queued', 'running', 'completed'].includes(r.status))) {
+    if (selected.some(r => !['queued', 'running', this.target].includes(r.status))) {
       throw new Error(`Unexpected run state after resume: ${detail}`);
     }
     if (now - this.startedAt >= this.deadlineMs) throw new Error(`Run deadline exceeded: ${detail}`);
-    if (selected.every(r => r.status === 'completed' && r.completed === r.total)) return true;
+    if (selected.every(r => r.status === this.target && (this.target === 'paused' || r.completed === r.total))) return true;
     const signature = JSON.stringify(selected.map(r => [r.id, r.status, r.completed]));
     if (signature !== this.signature) { this.signature = signature; this.changedAt = now; }
     if (now - this.changedAt >= this.stallMs) throw new Error(`Run queue stopped making progress: ${detail}`);

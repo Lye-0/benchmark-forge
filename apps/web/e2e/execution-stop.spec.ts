@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { createServer } from 'node:http';
+import { ProgressWatch, waitForRuns, type RunProgress } from './run-progress';
 import type { AddressInfo } from 'node:net';
 
-test('Ollama outage stops without scoring, survives reload and resumes the failed question', async ({ page, request }) => {
+test('Ollama outage stops without scoring, survives reload and resumes the failed question', async ({ page, request }, testInfo) => {
+  test.setTimeout(120000);
   let online = true;
   let chats = 0;
   let runId: string | undefined;
@@ -16,6 +18,8 @@ test('Ollama outage stops without scoring, survives reload and resumes the faile
     else if (req.url === '/api/show') res.end('{}');
     else {
       chats += 1;
+      // A real answer may take longer than the UI's five-second notification budget.
+      if (chats === 1) await new Promise(resolve => setTimeout(resolve, 6000));
       prompts.push(JSON.parse(body).messages[0].content);
       if (chats === 2) { online = false; res.writeHead(500); res.end('{"error":"model failed to load"}'); }
       else res.end(JSON.stringify({ message: { content: '0' }, done: true }));
@@ -42,6 +46,13 @@ test('Ollama outage stops without scoring, survives reload and resumes the faile
     expect(started.ok()).toBe(true);
     const { run_ids: [id] } = await started.json();
     runId = id;
+    const readProgress = async () => {
+      const response = await request.get(`/api/runs/${id}?detail=false`, { timeout: 5000 });
+      try { expect(response.ok()).toBe(true); return [await response.json() as RunProgress]; }
+      finally { await response.dispose(); }
+    };
+    // First require the durable stop; only then measure notification latency.
+    await waitForRuns(new ProgressWatch([id], Date.now(), 15000, 30000, 'paused'), readProgress);
     const dialog = page.getByRole('dialog', { name: 'モデルの評価を自動停止しました' });
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText('接続断テスト');
@@ -61,16 +72,22 @@ test('Ollama outage stops without scoring, survives reload and resumes the faile
     expect((await (await request.get(`/api/runs/${id}`)).json()).status).toBe('paused');
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-    await page.screenshot({ path: '/tmp/execution-stop-dialog.png' });
+    await page.screenshot({ path: testInfo.outputPath('execution-stop-dialog.png') });
     online = true;
     await dialog.getByRole('button', { name: '接続を確認して再開' }).click();
     await expect(dialog).not.toBeVisible();
-    await expect.poll(async () => (await (await request.get(`/api/runs/${id}`)).json()).status).toBe('completed');
+    await waitForRuns(new ProgressWatch([id], Date.now(), 15000, 30000), readProgress);
     expect(chats).toBe(3);
     expect(prompts[1]).toBe(prompts[2]);
   } finally {
     if (runId) {
       const saved = await (await request.get(`/api/runs/${runId}`)).json();
+      if (testInfo.status !== testInfo.expectedStatus) {
+        const { id, status, completed, total, revision, execution_block } = saved;
+        const detail = JSON.stringify({ id, status, completed, total, revision, execution_block, fixture_chats: chats, fixture_online: online }, null, 2);
+        console.log('durable-execution-stop:', detail);
+        await testInfo.attach('durable-execution-stop', { body: detail, contentType: 'application/json' });
+      }
       if (['queued', 'running', 'pausing', 'paused'].includes(saved.status)) await request.post(`/api/runs/${runId}/cancel`, { data: {} });
     }
     await request.post('/api/models/outage-fixture/delete', { data: {} });

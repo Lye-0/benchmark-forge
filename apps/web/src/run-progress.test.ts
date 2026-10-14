@@ -47,3 +47,17 @@ it('fails on persistent transport timeouts and does not retry HTTP failures', as
     throw new Error('HTTP 500');
   }, () => 0)).rejects.toThrow('HTTP 500');
 });
+
+
+it('waits for a durable automatic pause without accepting completion or cancellation', () => {
+  const watch = new ProgressWatch(['a'], 0, 15000, 30000, 'paused');
+  expect(watch.observe([row('a', 'running', 0)], 0)).toBe(false);
+  expect(watch.observe([row('a', 'running', 1)], 6000)).toBe(false);
+  expect(watch.observe([row('a', 'paused', 1)], 7000)).toBe(true);
+  for (const status of ['completed', 'cancelled']) {
+    expect(() => new ProgressWatch(['a'], 0, 15000, 30000, 'paused').observe([row('a', status, 100)], 1)).toThrow('Unexpected run state');
+  }
+  const stalled = new ProgressWatch(['a'], 0, 15000, 30000, 'paused');
+  stalled.observe([row('a', 'running', 1)], 0);
+  expect(() => stalled.observe([row('a', 'running', 1)], 15000)).toThrow('stopped making progress');
+});

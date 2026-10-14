@@ -146,11 +146,29 @@ test('private holdout import and independent native tool evaluation', async ({ p
   await expect(page.locator('details.problem-log')).toHaveCount(5);
 });
 
-test('speed probe is labeled separately from ability', async ({ page }) => {
+test('speed probe is labeled separately from ability', async ({ page, request }) => {
+  test.setTimeout(60000);
+  // Exercise a slow start acknowledgement separately from the UI rendering deadline.
+  await page.route('**/api/runs', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    const response = await route.fetch();
+    await new Promise(resolve => setTimeout(resolve, 6000));
+    await route.fulfill({ response });
+  });
   await page.goto('/#settings');
+  const started = page.waitForResponse(r => r.url().endsWith('/api/runs') && r.request().method() === 'POST');
   await page.getByRole('button', { name: '速度試験を開始（3回）' }).click();
+  const response = await started;
+  expect(response.ok()).toBe(true);
+  const { run_ids: ids } = await response.json() as { run_ids: string[] };
+  expect(ids).toHaveLength(1);
   await expect(page.getByText(/専用速度試験：正答率は出力形式の遵守確認/)).toBeVisible();
-  await expect(page.getByText('完了', { exact: true }).first()).toBeVisible();
+  await waitForRuns(new ProgressWatch(ids, Date.now(), 15000, 30000), async () => {
+    const progress = await request.get(`/api/runs/${ids[0]}?detail=false`, { timeout: 5000 });
+    try { expect(progress.ok()).toBe(true); return [await progress.json() as RunProgress]; }
+    finally { await progress.dispose(); }
+  });
+  await expect(page.locator('.page-heading').getByText('完了', { exact: true })).toBeVisible();
 });
 
 for (const width of [1440, 390]) {
