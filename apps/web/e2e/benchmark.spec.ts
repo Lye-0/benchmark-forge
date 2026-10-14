@@ -222,6 +222,9 @@ test('installed Ollama choices fill registration without saving or overwriting u
   await page.goto('/#models');
   const choice = page.getByLabel('インストール済みモデルから入力');
   await expect(choice).toBeEnabled();
+  await choice.click();
+  await page.screenshot({ path: '/tmp/ollama-model-picker.png' });
+  await page.keyboard.press('Escape');
   await choice.selectOption('qwen3:0.6b');
   await expect(page.getByLabel('Ollamaのモデル名（タグを含む）')).toHaveValue('qwen3:0.6b');
   await expect(page.getByLabel('モデルID', { exact: true })).toHaveValue('ollama-qwen3-0.6b');

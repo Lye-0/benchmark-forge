@@ -325,3 +325,10 @@ P50/P95も元のレイテンシから再計算し一致。Gemmaは11.838/12.111�
 - 全体チェックはpytest **292 passed / 6 skipped**、Vitest **36 passed**、Ruff / format / mypy・秘密情報走査・TypeScript / Vite成功。並列負荷をかけた初回は既存0.1秒制限のバックエンド試験が1件失敗したため、ブラウザとの同時実行を避けて全体チェックを再実行した。
 - ブラウザ試験 **11 passed**（Linux Chromium）。Windows Actionsでの修正後の成功は未確認。
 - 到達段階 **7/7（Phase 6）**。全体要件の未完了条件は継続。利用者は自動再実行されるActionsのWindows／Linux結果を確認。手元へ反映する場合はpull・Webビルド・再起動。
+
+## 2026-10-14 Ollama候補プルダウンの配色・余白
+
+- 利用者の指定どおりOllama候補プルダウンだけにCSSを限定。候補一覧の暗い背景、角丸、枠、影、項目の余白と青系の選択／フォーカス色を適用。標準selectの操作と自動入力は保持。
+- customizable select対応ブラウザでは一覧全体を装飾し、未対応ブラウザでは標準selectと候補の配色にフォールバックする。Linux Chromiumで開いた一覧を目視確認。Windows実機の見た目は未確認。
+- 全体チェック成功: pytest 292 passed / 6 skipped、Vitest 36 passed、lint・format・型検査・秘密情報走査・ビルド成功。候補の自動入力を含むブラウザ試験1 passed。
+- 到達段階7/7（Phase 6）、今回のデザイン修正は完了。利用者はpull・Webビルド・再起動で反映。全体要件の未完了条件は継続。
