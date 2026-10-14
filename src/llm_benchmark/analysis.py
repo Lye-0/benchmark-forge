@@ -44,7 +44,9 @@ def resource_summary(results: list) -> dict:
     from llm_benchmark.gpu_sampling import summarize_gpu
 
     output["gpu_sampling"] = summarize_gpu(results)
-    output["scope"] = "成功応答のワーカー計測の最大値。失敗時・GPU全体の使用量は含まない"
+    output["scope"] = (
+        "ワーカー指標は成功応答に含まれた局所計測の最大値。gpu_samplingは別集計で、ホストGPU全体を対象にエラー・タイムアウト時の取得値も含みます"
+    )
     return output
 
 
@@ -130,3 +132,27 @@ def timing_summary(results: list, recent: list, total: int, status: str) -> dict
             "直近の平均時間が続くと仮定した参考値です。残りの問題の難しさや回答長によって変わります"
         )
     return output
+
+
+def response_evidence(results: list, *, backend: str, mode: str) -> dict:
+    """Run-local transport evidence, distinct from model identity and capability claims."""
+    received = sum(
+        r.metrics.get("backend_response_received") is True
+        or (mode == "text" and r.status in {"correct", "incorrect", "empty"})
+        for r in results
+    )
+    mock = backend == "mock"
+    return {
+        "status": "software_diagnostic"
+        if mock
+        else "response_observed"
+        if received
+        else "not_observed",
+        "response_results": received,
+        "scope": "このランの現行結果に保存されたバックエンド応答。正答・モデルの出所・GPUへの処理帰属・未使用機能の対応を保証しません。接続確認時の情報とは区別します。",
+        "reason": "Mockのソフトウェア診断です"
+        if mock
+        else f"このランでバックエンド応答を{received}件確認しました"
+        if received
+        else "このランにはバックエンド応答を確認できる結果がまだありません",
+    }

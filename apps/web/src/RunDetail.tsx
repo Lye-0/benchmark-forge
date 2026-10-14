@@ -69,6 +69,7 @@ export function RunDetail({ id, registry, onError, refresh }: { id: string; regi
       <a className="secondary" href={`/api/runs/${id}/export/markdown`} download><Download size={16}/> レポート</a>
     </div></div>
     {run.test_only && <div className="inline-note prominent">Mock診断 — ソフトウェアの動作確認用です。LLMの性能値・モデルランキングには含めません。</div>}
+    {run.response_evidence && <p className="inline-note">{run.response_evidence.reason}。接続確認時点の状態とは別の、このランでの記録です。</p>}
     {run.provisional && <section className="panel progress-panel"><div><strong>{run.completed} / {run.total} 問を処理</strong><span>{progress.toFixed(0)}% · {connection}</span></div><div className="progress-track" role="progressbar" aria-label="評価進捗" aria-valuenow={run.completed} aria-valuemin={0} aria-valuemax={run.total}><span style={{ width: `${progress}%` }}/></div><p>正答率は全割当問題を分母とする暫定値です。一時停止は現在の回答処理後に反映され、中止は処理中の要求をキャンセルします。</p></section>}
     {!!run.output_diagnostics?.length_limited && <p className="warning" role="note">出力上限による終了: {run.output_diagnostics.length_limited}件（うち無回答: {run.output_diagnostics.empty_length_limited}件）。バックエンドの終了理由に基づく集計です。思考の内容や、上限を増やした場合の正答は判断できません。</p>}
     <div className="tabs" role="tablist" aria-label="結果表示">{[['overview', '概要・分析'], ['details', '問題別ログ'], ['config', '実行条件']].map(([id, label]) => <button key={id} id={`tab-${id}`} role="tab" aria-selected={tab === id} aria-controls={`panel-${id}`} onClick={() => setTab(id)}>{label}</button>)}</div>

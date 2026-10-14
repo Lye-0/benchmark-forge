@@ -9,6 +9,7 @@ from llm_benchmark.analysis import (
     difficulty_estimate,
     output_summary,
     resource_summary,
+    response_evidence,
     timing_summary,
 )
 from llm_benchmark.domain import ModelConfig, Result
@@ -115,6 +116,9 @@ def summarize(store: Store, id: str, detail: bool = True) -> dict:
             and frozen.config.evaluation_mode == "text",
         ),
         "resources": resource_summary(results),
+        "response_evidence": response_evidence(
+            results, backend=run["model"]["backend"], mode=frozen.config.evaluation_mode
+        ),
         "measurement_kind": "speed"
         if frozen.profile_version == "Speed probe v1"
         else frozen.config.evaluation_mode,
@@ -363,7 +367,7 @@ class Scheduler:
                     response = await asyncio.wait_for(pending, timeout=config.timeout_seconds)
                 finally:
                     self.active = None
-                metrics = response.metrics
+                metrics = {**response.metrics, "backend_response_received": True}
                 answer = response.text
                 tokens = response.output_tokens
                 ttft = response.ttft_seconds

@@ -140,11 +140,14 @@ def export_report(report: dict, format: str) -> tuple[str, str]:
                     json.dumps(data, ensure_ascii=False, indent=2),
                     "```",
                 ]
+        evidence = report.get("response_evidence")
+        if evidence:
+            lines += ["", evidence["reason"], evidence["scope"]]
         observations = report.get("environment", {}).get("model_observations", [])
         if observations:
             lines += [
                 "",
-                "モデル識別情報（実行区間ごとの観測）:",
+                "モデル識別情報（各実行区間の開始前に取得した接続確認）:",
                 "```json",
                 json.dumps(observations, ensure_ascii=False, indent=2),
                 "```",

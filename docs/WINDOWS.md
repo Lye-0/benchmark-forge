@@ -154,7 +154,7 @@ DockerがないPCで`diagnose.ps1 -Sandbox`を実行すると、`state: not_inst
 
 ## GPU連続計測とDB v3への更新確認
 
-実装・応答fixture・Windows CIと、実機NVIDIAドライバーの連続計測は別の検証です。RTX 5070 Laptopで過去に単発診断は成功していますが、今回の評価中の連続取得は実機で確認します。Docker、Transformers、ドライバー更新は不要です。
+実装・応答fixture・Windows CIと、実機NVIDIAドライバーの連続計測は別の検証です。RTX 5070 Laptopで過去に単発診断は成功していますが、評価中の連続取得も2026-10-14に利用者提供の2問のログで確認済みです。以下は再利用可能な確認手順で、確認済みの方は繰り返す必要はありません。Docker、Transformers、ドライバー更新は不要です。
 
 1. 実行中の評価があれば一時停止し、起動したPowerShellでCtrl+Cを押してアプリを終了します。
 2. **更新前**に、設定画面で表示される保存ディレクトリ全体を別名でコピーします。既定の保存先ならリポジトリ直下で以下を使用できます。`FORGE_DATA_DIR`を設定している場合はその保存先をコピーしてください。
@@ -172,3 +172,19 @@ DockerがないPCで`diagnose.ps1 -Sandbox`を実行すると、`state: not_inst
 7. 完了後、概要の「GPU使用状況（ホスト全体）」でGPU名・標本数とVRAM/使用率を確認し、Markdownレポートを保存します。電力など未対応の項目はN/Aでも正常です。全サンプルがない場合は表示された理由を確認します。
 
 確認に必要なのは過去履歴が保持されたか、2問の処理が完了したか、GPUの標本数・欠測理由です。モデル重み・認証情報の共有は不要です。この少数確認は性能ランキングや難易度校正には使用しません。
+
+## Ubuntu / WSL内にあるモデルをWindowsで使う
+
+Ubuntu側のPython環境とWindows側のPython環境は別です。モデルがsafetensors形式なら、既存モデル一式をWindowsの新しいフォルダーへコピーして、WindowsのTransformers登録でそのパスを指定できます。GGUF/Ollama形式はこのアダプターの対象外です。
+
+保存場所が不明なら、まずUbuntuのターミナルで次を実行します。ファイル名だけを検索し、モデルや設定を変更しません。
+
+```bash
+find "$HOME" -maxdepth 8 \( -type f -o -type l \) \( -name 'config.json' -o -name '*.safetensors' -o -name '*.gguf' \) -print 2>/dev/null
+```
+
+Hugging Faceキャッシュなら `models--Qwen--.../snapshots/<版>/` が候補です。対象フォルダーにはconfig.json、safetensors本体（分割の場合は全shardとindex）、tokenizer関連ファイルが必要です。キャッシュはblobsへのシンボリックリンクの場合があるため、snapshotだけをリンクのままWindowsへ移すと壊れます。
+
+WSLであることと対象の保存先が確認できた後、Ubuntu側から `/mnt/c/...` の新しいフォルダーへ `cp -rL` などでリンク先の実体を含めてコピーします。既存フォルダーへの上書きや元ファイルの移動は行いません。Windowsの通常PythonにUbuntuの仮想環境をコピーする必要はありません。
+
+その後、上記のCUDA用extraをWindowsのプロジェクト内へ導入し、Torch診断でcuda_availableを確認してから、Transformersのモデル名欄にWindowsパスを登録します。実際のコピーコマンドは、取得形式・UbuntuがWSLか・モデルの保存先を確認したうえで決めてください。
