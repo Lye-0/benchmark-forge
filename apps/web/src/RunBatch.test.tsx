@@ -23,3 +23,16 @@ it('does not keep retrying deleted runs while other models continue updating', a
   expect(vi.mocked(api).mock.calls.filter(([path]) => path.includes('/deleted?'))).toHaveLength(1);
   expect(vi.mocked(api).mock.calls.filter(([path]) => path.includes('/good?'))).toHaveLength(2);
 });
+
+it('updates a responsive model while another model request remains pending', async () => {
+  vi.useFakeTimers();
+  let completed = 1;
+  vi.mocked(api).mockImplementation(path => path.includes('/good?') ? Promise.resolve({ id: 'good', model: { name: 'Good model' }, status: 'running', completed: completed++, total: 5 }) : new Promise(() => {}));
+  render(<RunBatch ids={['good', 'slow']} selected="good" open={vi.fn()} onError={vi.fn()}/>);
+  await act(async () => {});
+  expect(screen.getByText('Good model')).toBeVisible();
+  expect(screen.getByText('1 / 5')).toBeVisible();
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+  expect(screen.getByText('2 / 5')).toBeVisible();
+  expect(vi.mocked(api).mock.calls.filter(([path]) => path.includes('/slow?'))).toHaveLength(1);
+});

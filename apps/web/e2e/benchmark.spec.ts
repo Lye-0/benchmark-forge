@@ -39,13 +39,20 @@ test('browser configuration → frozen set → run → logs → comparison', asy
   await page.getByRole('button', { name: '問題セットを確定する' }).click();
   await expect(page.getByRole('heading', { name: '確定した問題セット' })).toBeVisible();
   await expect(page.getByText('100問 · 固定50 / 動的50', { exact: false })).toBeVisible();
+  // A background refresh must not hold the user on the start form. Keep
+  // registry refresh pending until both newly created models are visible.
+  let releaseRefresh!: () => void;
+  const refreshGate = new Promise<void>(resolve => { releaseRefresh = resolve; });
+  await page.route('**/api/registry', async route => { await refreshGate; await route.continue(); });
   const started = page.waitForResponse(r => r.url().endsWith('/api/runs') && r.request().method() === 'POST');
   await page.getByRole('button', { name: '選択した2モデルの評価を開始' }).click();
   const { run_ids: runIds } = await (await started).json() as { run_ids: string[] };
   expect(runIds).toHaveLength(2);
   const batch = page.getByRole('region', { name: '今回開始したモデルの評価' });
-  await expect(batch.getByText('Mock / 誤答テスト', { exact: true })).toBeVisible();
-  await expect(batch.getByText('Mock / 参照ソルバー', { exact: true })).toBeVisible();
+  try {
+    await expect(batch.getByText('Mock / 誤答テスト', { exact: true })).toBeVisible();
+    await expect(batch.getByText('Mock / 参照ソルバー', { exact: true })).toBeVisible();
+  } finally { releaseRefresh(); }
   await expect(page.getByRole('heading', { name: 'Mock / 参照ソルバー' })).toBeVisible();
   await page.getByRole('button', { name: 'このモデルを一時停止', exact: true }).click();
   await expect(page.getByRole('button', { name: 'このモデルを再開', exact: true })).toBeVisible();

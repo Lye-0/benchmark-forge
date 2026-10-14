@@ -11,22 +11,32 @@ export function RunBatch({ ids, selected, open, onError }: { ids: string[]; sele
   const key = ids.join(',');
   useEffect(() => {
     let active = true;
-    const absent = new Set<string>();
-    setMissing([]);
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      const runIds = key.split(',');
-      const values = await Promise.allSettled(runIds.map(id => absent.has(id) ? Promise.resolve(null) : api<Run>(`/runs/${id}?detail=false`)));
-      if (active) {
-        values.forEach((value, index) => { if (value.status === 'rejected' && value.reason instanceof ApiError && value.reason.status === 404) absent.add(runIds[index]); });
-        setMissing([...absent]);
-        setFailed(runIds.filter((id, index) => values[index].status === 'rejected' && !absent.has(id)));
-        setRuns(old => runIds.flatMap((id, index) => { const result = values[index]; return result.status === 'fulfilled' && result.value ? [result.value] : old.filter(run => run.id === id); }));
+    setMissing([]); setFailed([]); setRuns([]);
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    // Each model updates independently: one slow request must not hide or
+    // stop the progress of every other model in the batch.
+    const poll = async (id: string) => {
+      let missing = false;
+      try {
+        const value = await api<Run>(`/runs/${id}?detail=false`);
+        if (!active) return;
+        setFailed(old => old.filter(item => item !== id));
+        setRuns(old => [...old.filter(run => run.id !== id), value]);
+      } catch (error) {
+        if (!active) return;
+        missing = error instanceof ApiError && error.status === 404;
+        if (missing) {
+          setMissing(old => old.includes(id) ? old : [...old, id]);
+          setFailed(old => old.filter(item => item !== id));
+        } else setFailed(old => old.includes(id) ? old : [...old, id]);
       }
-      if (active) timer = setTimeout(() => void poll(), 2000);
+      if (active && !missing) {
+        const timer = setTimeout(() => { timers.delete(timer); void poll(id); }, 2000);
+        timers.add(timer);
+      }
     };
-    void poll();
-    return () => { active = false; clearTimeout(timer); };
+    key.split(',').forEach(id => void poll(id));
+    return () => { active = false; timers.forEach(clearTimeout); };
   }, [key, onError]);
   return <section className="panel" aria-label="今回開始したモデルの評価"><div className="panel-title"><h2>今回の評価 · {ids.length}モデル</h2><span className="muted">モデルを1つずつ順に実行</span></div><div className="table-scroll"><table><thead><tr><th>モデル</th><th>状態</th><th>処理数</th><th>詳細</th></tr></thead><tbody>{ids.map(id => { const run = runs.find(r => r.id === id); return <tr key={id}><td>{run?.model.name ?? ((missing.includes(id) || failed.includes(id)) ? id : '読み込み中…')}</td><td>{missing.includes(id) ? '削除済み・見つかりません' : failed.includes(id) ? '取得失敗 · 再接続中' : run ? statusName[run.status] : '…'}</td><td>{run ? `${run.completed} / ${run.total}` : '…'}</td><td><button className="secondary" disabled={id === selected || missing.includes(id)} onClick={() => open(id)}>{id === selected ? '表示中' : `${run?.model.name ?? 'このモデル'}の詳細`}</button></td></tr>; })}</tbody></table></div></section>;
 }

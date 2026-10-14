@@ -39,7 +39,7 @@ export function NewBenchmark({ registry, models, presets, onCreated, refresh, on
   const start = async () => {
     if (!frozen) return;
     setBusy(true);
-    try { const response = await api<{ run_ids: string[] }>('/runs', { set_id: frozen.set_id, model_ids: selectedModels }); await refresh(); if (mounted.current) onCreated(response.run_ids); }
+    try { const response = await api<{ run_ids: string[] }>('/runs', { set_id: frozen.set_id, model_ids: selectedModels }); if (mounted.current) onCreated(response.run_ids); }
     catch (e) { mounted.current && onError((e as Error).message); }
     finally { setBusy(false); }
   };

@@ -36,3 +36,16 @@ it('rejects out of range or fractional question counts before calling the API', 
   }
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it('opens created runs without waiting for unrelated history and settings refresh', async () => {
+  const onCreated = vi.fn();
+  const refresh = vi.fn(() => new Promise<void>(() => {}));
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ set_id: 'set-new', set_hash: 'hash', count: 20, fixed_count: 10, dynamic_count: 10, warnings: [], duplicate_stats: {}, sample: [] }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ run_ids: ['run-a'] }) }));
+  render(<NewBenchmark registry={registry} models={[model]} presets={[{ id: 'preview-quick-v1', name: 'クイック', description: '', config }]} onCreated={onCreated} refresh={refresh} onError={vi.fn()}/>);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: '問題セットを確定する' }));
+  await user.click(await screen.findByRole('button', { name: '選択した1モデルの評価を開始' }));
+  expect(onCreated).toHaveBeenCalledWith(['run-a']);
+});
