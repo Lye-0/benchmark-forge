@@ -11,6 +11,12 @@ export function Compare({ runs, models, onError, open }: { runs: Run[]; models: 
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
   useEffect(() => () => { generation.current += 1; }, []);
+  useEffect(() => {
+    if (selected.some(id => !runs.some(run => run.id === id))) {
+      generation.current += 1; setComparison(null); setBusy(false);
+      setSelected(old => old.filter(id => runs.some(run => run.id === id)));
+    }
+  }, [runs, selected]);
   const compare = async () => {
     const current = ++generation.current;
     setBusy(true);

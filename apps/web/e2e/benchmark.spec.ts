@@ -84,7 +84,7 @@ test('browser configuration → frozen set → run → logs → comparison', asy
   await page.getByRole('button', { name: '選択した実行を比較' }).click();
   await expect(page.getByText('同一問題セット', { exact: true })).toBeVisible();
   await expect(page.getByText('Mock結果はソフトウェア診断です。正式なモデルランキングには含めません。')).toBeVisible();
-  await page.getByRole('button', { name: '選択したランの観測を集計' }).click();
+  await page.getByRole('button', { name: '選択したモデルの結果を集計' }).click();
   await expect(page.getByText('校正用データには完了した実モデルの能力評価ランが必要です')).toBeVisible();
   await page.getByLabel('元の実行', { exact: true }).selectOption(runIds[0]);
   await page.getByLabel('追加評価モデル', { exact: true }).selectOption('mock-wrong');
@@ -129,7 +129,7 @@ test('private holdout import and independent native tool evaluation', async ({ p
   const holdout = page.locator('section').filter({ has: page.getByRole('heading', { name: '私有holdoutの取り込み' }) });
   await holdout.getByRole('checkbox', { name: 'Mock / 参照ソルバー' }).check();
   await holdout.getByRole('checkbox', { name: 'Mock / 誤答テスト' }).check();
-  await holdout.getByRole('button', { name: '選択した2モデルで取り込み済みの問題を評価' }).click();
+  await holdout.getByRole('button', { name: '選択した2モデルで評価' }).click();
   await expect(page.getByRole('region', { name: '今回開始したモデルの評価' })).toBeVisible();
   await page.getByRole('button', { name: 'プロファイル・設定', exact: true }).click();
   await page.getByLabel('独立評価モード').selectOption('agent');
@@ -225,6 +225,9 @@ test('installed Ollama choices fill registration without saving or overwriting u
   await expect(page.getByLabel('モデルID', { exact: true })).toHaveValue('ollama-gemma-test');
   await expect(page.getByLabel('表示名', { exact: true })).toHaveValue('自分の表示名');
   await expect(page.getByLabel('量子化', { exact: true })).toHaveValue('Q8_0');
+  await page.getByLabel('Ollamaのモデル名（タグを含む）').fill('another:model');
+  await expect(page.getByLabel('リビジョン', { exact: true })).toHaveValue('unrecorded');
+  await expect(page.getByLabel('量子化', { exact: true })).toHaveValue('N/A');
   await page.unroute('**/api/ollama/models');
   await page.route('**/api/ollama/models', route => route.fulfill({ status: 503, json: { detail: 'Ollamaを起動してください' } }));
   await page.getByRole('button', { name: '候補を再取得' }).click();

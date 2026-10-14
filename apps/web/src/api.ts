@@ -1,3 +1,6 @@
+export class ApiError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
 export async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, body === undefined ? {} : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -5,7 +8,7 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     const detail = typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map((item: { loc?: (string | number)[]; msg?: string }) => `${item.loc?.filter(x => x !== 'body').join('.') || '入力'}: ${item.msg || '値を確認してください'}`).join(' / ') : `リクエストに失敗しました（HTTP ${response.status}）。再試行してください`;
-    throw new Error(detail);
+    throw new ApiError(detail, response.status);
   }
   return response.json();
 }

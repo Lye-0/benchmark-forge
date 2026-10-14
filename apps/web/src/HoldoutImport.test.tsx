@@ -16,7 +16,7 @@ it('preserves a valid import after replacement failure and opens every selected 
   expect(screen.getByRole('status')).toHaveTextContent('valid.jsonl');
   fireEvent.click(screen.getByRole('checkbox', { name: 'a' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'b' }));
-  await act(async () => fireEvent.click(screen.getByRole('button', { name: '選択した2モデルで取り込み済みの問題を評価' })));
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: '選択した2モデルで評価' })));
   expect(api).toHaveBeenLastCalledWith('/runs', { set_id: 'saved', model_ids: ['a', 'b'] });
   expect(created).toHaveBeenCalledWith(['a', 'b']);
 });

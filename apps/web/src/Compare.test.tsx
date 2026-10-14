@@ -19,3 +19,14 @@ it('discards a comparison response after the selected runs change', async () => 
   expect(screen.queryByText('old result')).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: '比較結果' })).not.toBeInTheDocument();
 });
+
+it('removes deleted runs from selection when history refreshes', () => {
+  const runs = ['a', 'b'].map(id => ({ id, model: { name: id, backend: 'mock' }, set_hash: 'same', completed: 2, total: 2, created_at: '2026-10-14T00:00:00Z', status: 'completed' })) as Run[];
+  const props = { models: [], onError: vi.fn(), open: vi.fn() };
+  const { rerender } = render(<Compare runs={runs} {...props}/>);
+  screen.getAllByRole('checkbox').forEach(box => fireEvent.click(box));
+  expect(screen.getByRole('button', { name: '選択した実行を比較' })).toBeEnabled();
+  rerender(<Compare runs={runs.slice(0, 1)} {...props}/>);
+  expect(screen.getByRole('button', { name: '選択した実行を比較' })).toBeDisabled();
+  expect(screen.getByRole('checkbox')).toBeChecked();
+});

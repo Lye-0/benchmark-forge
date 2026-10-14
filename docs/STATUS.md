@@ -307,3 +307,11 @@ P50/P95も元のレイテンシから再計算し一致。Gemmaは11.838/12.111�
 - 接続先は既存のliteral loopback HTTP検証を使用。環境プロキシ不使用、リダイレクト禁止、応答サイズ・件数・名前長を制限。新しいPOST経路も既存Origin保護対象。
 - 検証: 全体チェックでpytest **291 passed / 6 skipped**、Vitest **32 passed**、Ruff / format / mypy・秘密情報走査・TypeScript / Vite成功。その後追加したAPIの読取専用／Origin保護テストを含むAPI試験 **11 passed**。Playwright **8 passed**。Ollama応答はfixtureで検証し、利用者の実機への接続は未実施。
 - 到達段階7/7。今回の機能は完了。手元ではpull・Webビルド・再起動後にOllamaを起動してモデル画面を開く。全体要件の未完了条件は従来どおり。
+
+## 2026-10-14 全UI再点検・実ブラウザ確認
+
+- Astra mediumの4担当による全UI静的点検と、Chromiumの1440px／390pxスクリーンショットの目視確認を実施。対象と修正内容は`UI_AUDIT.md`に追記。740×360の横向きナビ操作も確認。
+- 診断／独立評価ボタンの間隔、ログボタン、表／フォーム／削除モーダルのはみ出しとメニュー高さを修正。難易度別集計・速度試験・取り込み中表示を明確化。
+- モデル変更時の古いメタデータ、エラー表示位置、削除済み履歴の比較選択／バッチ再取得を修正し、回帰テストを追加。
+- 検証: Ruff / format / mypy、pytest **292 passed / 6 skipped**、秘密情報走査、Vitest **34 passed**、TypeScript / Vite成功。Playwright **11 passed**。実機Ollama／GPUは今回の検証対象外。
+- 到達段階 **7/7（Phase 6）**。今回のUI点検・修正は完了。全要件完了を意味せず、従来の実測校正・実機／隔離検証等の未完了条件は継続。利用者の操作はpull・Webビルド・サーバー再起動。

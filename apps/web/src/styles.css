@@ -222,3 +222,17 @@ fieldset.form-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 @media (max-width: 760px) { .model-dialog { padding: 18px; }.model-dialog .form-grid { grid-template-columns: 1fr; } }
 .delete-dialog { max-width: 520px; }
 .delete-dialog p { line-height: 1.8; overflow-wrap: anywhere; margin: 20px 0; }
+
+.diagnostic-actions { display: grid; justify-items: start; gap: 12px; margin-top: 16px; }
+.model-dialog { white-space: normal; overflow-wrap: anywhere; }
+.sidebar { height: 100dvh; overflow-y: auto; }
+.sidebar > * { flex-shrink: 0; }
+.wrap-anywhere { overflow-wrap: anywhere; }
+.ollama-models { margin-bottom: 20px; }
+@media (max-width: 760px) {
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .primary, .secondary { white-space: normal; max-width: 100%; overflow-wrap: anywhere; }
+}
+.table-scroll { position: relative; max-width: 100%; }
+
+.table-scroll td .secondary { white-space: nowrap; max-width: none; overflow-wrap: normal; }

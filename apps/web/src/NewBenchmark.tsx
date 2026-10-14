@@ -45,7 +45,7 @@ export function NewBenchmark({ registry, models, presets, onCreated, refresh, on
   };
   const save = async () => {
     if (!presetName.trim() || saving) return;
-    setSaving(true);
+    setSaving(true); onError('');
     const revision = configRevision.current;
     try { await api('/presets', { name: presetName, config }); if (revision === configRevision.current) setSaved(true); await refresh(); }
     catch (e) { mounted.current && onError((e as Error).message); }
