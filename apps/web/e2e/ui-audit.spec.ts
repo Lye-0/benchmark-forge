@@ -1,13 +1,19 @@
 import { test, expect } from '@playwright/test';
+import { waitForCompletedRuns } from './run-progress';
 
 for (const width of [1440, 390]) {
   test(`all UI routes and panels at ${width}px`, async ({ page, request }) => {
     test.setTimeout(90000);
     await page.setViewportSize({ width, height: 1000 });
     await page.route('**/api/ollama/models', route => route.fulfill({ json: { models: [{ name: 'qwen3:0.6b', quantization: 'Q4_K_M', revision: 'a'.repeat(64), size_bytes: 500000000 }] } }));
-    const frozen = await (await request.post('/api/sets', { data: { generator_ids: ['math.linear'], count: 2, seed: 67, fixed_ratio: 0 } })).json();
-    const { run_ids: ids } = await (await request.post('/api/runs', { data: { set_id: frozen.set_id, model_ids: ['mock-reference', 'mock-wrong'] } })).json();
-    await expect.poll(async () => (await (await request.get(`/api/runs/${ids[1]}`)).json()).status).toBe('completed');
+    const createdSet = await request.post('/api/sets', { data: { generator_ids: ['math.linear'], count: 2, seed: 67, fixed_ratio: 0 } });
+    expect(createdSet.ok()).toBe(true);
+    const frozen = await createdSet.json();
+    const started = await request.post('/api/runs', { data: { set_id: frozen.set_id, model_ids: ['mock-reference', 'mock-wrong'] } });
+    expect(started.ok()).toBe(true);
+    const { run_ids: ids } = await started.json() as { run_ids: string[] };
+    expect(ids).toHaveLength(2);
+    await waitForCompletedRuns(request, ids);
     for (const route of ['dashboard', 'new', 'history', 'compare', 'models', 'generators', 'settings', `run/${ids[0]}?batch=${ids.join(',')}`]) {
       const key = route.startsWith('run/') ? 'run' : route;
       await page.goto('/#' + route);

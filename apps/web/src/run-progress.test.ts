@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { ProgressWatch, type RunProgress } from '../e2e/run-progress';
+import { ProgressWatch, waitForRuns, type RunProgress } from '../e2e/run-progress';
 const row = (id: string, status: string, completed: number): RunProgress => ({ id, status, completed, total: 100, revision: completed });
 
 it('waits for both sequential models while a resumed run queues behind the other model', () => {
@@ -8,6 +8,23 @@ it('waits for both sequential models while a resumed run queues behind the other
   expect(watch.observe([row('a', 'queued', 2), row('b', 'running', 75)], 10000)).toBe(false);
   expect(watch.observe([row('a', 'running', 59), row('b', 'completed', 100)], 20000)).toBe(false);
   expect(watch.observe([row('a', 'completed', 100), row('b', 'completed', 100)], 30000)).toBe(true);
+});
+
+it('prepares UI fixtures when the second model stays queued beyond the UI deadline', async () => {
+  let clock = 0;
+  const snapshots = [
+    [row('first', 'running', 0), row('second', 'queued', 0)],
+    [row('first', 'running', 50), row('second', 'queued', 0)],
+    [row('first', 'completed', 100), row('second', 'running', 0)],
+    [row('first', 'completed', 100), row('second', 'completed', 100)],
+  ];
+  await waitForRuns(new ProgressWatch(['first', 'second'], 0, 15000, 30000), async () => {
+    const snapshot = snapshots.shift();
+    if (!snapshot) throw new Error('Unexpected extra progress read');
+    return snapshot;
+  }, () => clock, async () => { clock += 6000; });
+  expect(clock).toBe(18000);
+  expect(snapshots).toHaveLength(0);
 });
 
 it('fails on a stalled selected queue even if unrelated runs advance', () => {

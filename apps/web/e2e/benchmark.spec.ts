@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
-import { ProgressWatch, waitForRuns, type RunProgress } from './run-progress';
+import { ProgressWatch, waitForRuns, waitForCompletedRuns, type RunProgress } from './run-progress';
 
 // Capture durable state separately from the DOM, and prevent a failed test's queued
 // runs from delaying unrelated tests. This server/DB is exclusive to this suite.
@@ -138,7 +138,8 @@ test('mobile navigation and unsupported categories', async ({ page }) => {
   expect(overflow).toBe(false);
 });
 
-test('private holdout import and independent native tool evaluation', async ({ page }) => {
+test('private holdout import and independent native tool evaluation', async ({ page, request }) => {
+  test.setTimeout(60000);
   await page.goto('/#settings');
   const jsonl = [
     { schema: 'forge-holdout-v1', name: 'E2E private fixture', source: 'original', license: 'private-use' },
@@ -153,8 +154,14 @@ test('private holdout import and independent native tool evaluation', async ({ p
   await expect(page.getByRole('region', { name: '今回開始したモデルの評価' })).toBeVisible();
   await page.getByRole('button', { name: 'プロファイル・設定', exact: true }).click();
   await page.getByLabel('独立評価モード').selectOption('agent');
+  const started = page.waitForResponse(r => r.url().endsWith('/api/runs') && r.request().method() === 'POST');
   await page.getByRole('button', { name: '独立評価を開始（5問）' }).click();
-  await expect(page.getByText('完了', { exact: true }).first()).toBeVisible({ timeout: 10000 });
+  const response = await started;
+  expect(response.ok()).toBe(true);
+  const { run_ids: ids } = await response.json() as { run_ids: string[] };
+  expect(ids).toHaveLength(1);
+  await waitForCompletedRuns(request, ids);
+  await expect(page.locator('.page-heading').getByText('完了', { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '問題別ログ' }).click();
   await expect(page.locator('details.problem-log')).toHaveCount(5);
 });
@@ -219,11 +226,12 @@ for (const width of [1440, 390]) {
 }
 
 test('deletion confirms each target and preserves history after model removal', async ({ page, request }) => {
+  test.setTimeout(60000); // Backend fixture completion, then normal UI deadlines.
   const model = { model_id: 'delete-fixture', name: '削除確認用モデル', backend: 'mock' };
   expect((await request.post('/api/models', { data: model })).ok()).toBe(true);
   const frozen = await (await request.post('/api/sets', { data: { generator_ids: ['math.linear'], count: 1, fixed_ratio: 0, seed: 42 } })).json();
   const { run_ids: [id] } = await (await request.post('/api/runs', { data: { set_id: frozen.set_id, model_ids: [model.model_id] } })).json();
-  await expect.poll(async () => (await (await request.get(`/api/runs/${id}`)).json()).status).toBe('completed');
+  await waitForCompletedRuns(request, [id]);
   await page.goto('/#models');
   const card = page.locator('.model-card').filter({ hasText: model.name });
   await card.getByRole('button', { name: '削除', exact: true }).click();

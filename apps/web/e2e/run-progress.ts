@@ -1,3 +1,5 @@
+import type { APIRequestContext } from '@playwright/test';
+
 export interface RunProgress { id: string; status: string; completed: number; total: number; revision: number }
 
 // A sequential queue may advance a different selected model while the resumed
@@ -54,4 +56,17 @@ export async function waitForRuns(
     if (watch.observe(rows, now())) return;
     await sleep(1000);
   }
+}
+
+// Fixture preparation has a backend execution budget, separate from the UI's
+// five-second rendering assertions. Observe every selected sequential run so a
+// queued model does not look stalled while the preceding model is advancing.
+export async function waitForCompletedRuns(request: APIRequestContext, ids: string[]): Promise<void> {
+  await waitForRuns(new ProgressWatch(ids, Date.now(), 15000, 30000), async () => {
+    const response = await request.get('/api/runs', { timeout: 5000 });
+    try {
+      if (!response.ok()) throw new Error(`Progress request failed: HTTP ${response.status()}`);
+      return await response.json() as RunProgress[];
+    } finally { await response.dispose(); }
+  });
 }
