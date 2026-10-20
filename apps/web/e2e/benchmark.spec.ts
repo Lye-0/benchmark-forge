@@ -29,7 +29,20 @@ test.afterEach(async ({ request }, testInfo) => {
 
 test('browser configuration → frozen set → run → logs → comparison', async ({ page, request }) => {
   test.setTimeout(150000); // Up to 200 durable problem writes, then a separate UI deadline.
+  // Cold /settings includes Windows hardware discovery (two probes can each
+  // take 8s). Give initialization its own deadline, then retain the normal 5s
+  // rendering assertion. Exercise this on Linux too instead of hiding it with
+  // retries or warming the API before the browser opens.
+  await page.route('**/api/settings', async route => {
+    const response = await route.fetch();
+    await new Promise(resolve => setTimeout(resolve, 6000));
+    await route.fulfill({ response });
+  }, { times: 1 });
+  const initialized = page.waitForResponse(r => r.url().endsWith('/api/settings'), { timeout: 30000 });
   await page.goto('/');
+  const settingsResponse = await initialized;
+  expect(settingsResponse.ok()).toBe(true);
+  await settingsResponse.finished();
   await expect(page.getByRole('heading', { name: 'ベンチマークを、確かな比較へ。' })).toBeVisible();
   await page.getByRole('button', { name: '新しいベンチマーク', exact: true }).last().click();
   await expect(page.getByRole('heading', { name: '新しいベンチマーク', exact: true })).toBeVisible();

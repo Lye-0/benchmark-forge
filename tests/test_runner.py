@@ -161,6 +161,7 @@ async def test_cancel_inflight_releases_next_run_immediately(store, frozen, monk
     from llm_benchmark.adapters import MockAdapter
 
     entered, stopped = asyncio.Event(), asyncio.Event()
+    next_entered, release_next = asyncio.Event(), asyncio.Event()
 
     class BlockingAdapter:
         async def complete(self, problem):
@@ -170,10 +171,16 @@ async def test_cancel_inflight_releases_next_run_immediately(store, frozen, monk
             finally:
                 stopped.set()
 
+    class SuccessorAdapter(MockAdapter):
+        async def complete(self, problem):
+            next_entered.set()
+            await release_next.wait()
+            return await super().complete(problem)
+
     monkeypatch.setattr(
         "llm_benchmark.runner.make_adapter",
         lambda config: (
-            BlockingAdapter() if config.model_id == "mock-reference" else MockAdapter(config)
+            BlockingAdapter() if config.model_id == "mock-reference" else SuccessorAdapter(config)
         ),
     )
     scheduler = Scheduler(store)
@@ -183,9 +190,15 @@ async def test_cancel_inflight_releases_next_run_immediately(store, frozen, monk
         await asyncio.wait_for(entered.wait(), 1)
         scheduler.control(first, "cancel")
         await asyncio.wait_for(stopped.wait(), 1)
-        await asyncio.wait_for(scheduler.queue.join(), 3)
+        # Measure handoff, not the cost of grading and durably saving all 20
+        # successor answers on a shared CI disk. The successor stays blocked
+        # until we have proved it started without waiting for the 60s request.
+        await asyncio.wait_for(next_entered.wait(), 3)
         assert not store.run(first)["results"]
         assert store.run(first)["status"] == "cancelled"
+        assert store.run(second)["status"] == "running"
+        release_next.set()
+        await asyncio.wait_for(scheduler.queue.join(), 30)
         assert store.run(second)["status"] == "completed"
     finally:
         await scheduler.close()
