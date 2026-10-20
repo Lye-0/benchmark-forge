@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import pytest
 
@@ -157,8 +158,27 @@ def test_crash_recovery_does_not_change_completed_runs(store, frozen):
     assert store.run(id)["status"] == "completed"
 
 
-async def test_cancel_inflight_releases_next_run_immediately(store, frozen, monkeypatch):
+@pytest.mark.parametrize("startup_delay", [0, 1.2])
+async def test_cancel_inflight_releases_next_run_immediately(store, monkeypatch, startup_delay):
     from llm_benchmark.adapters import MockAdapter
+    from llm_benchmark.domain import SetConfig
+    from llm_benchmark.sets import build_set
+
+    # Cancellation needs one in-flight problem, not a 20-problem disk benchmark.
+    frozen = build_set(SetConfig(generator_ids=["math.linear"], count=1, fixed_ratio=0))
+    store.save_set(frozen)
+    begin_attempt = store.begin_attempt
+    first_attempt = True
+
+    def prepare_attempt(id, index):
+        nonlocal first_attempt
+        if first_attempt:
+            first_attempt = False
+            # Model slow synchronous preparation/SQLite I/O on Windows runners.
+            time.sleep(startup_delay)
+        return begin_attempt(id, index)
+
+    monkeypatch.setattr(store, "begin_attempt", prepare_attempt)
 
     entered, stopped = asyncio.Event(), asyncio.Event()
     next_entered, release_next = asyncio.Event(), asyncio.Event()
@@ -187,12 +207,13 @@ async def test_cancel_inflight_releases_next_run_immediately(store, frozen, monk
     scheduler.start()
     try:
         first, second = scheduler.create(frozen.set_id, ["mock-reference", "mock-wrong"])
-        await asyncio.wait_for(entered.wait(), 1)
+        # Startup includes synchronous status/attempt commits. It is not the
+        # cancellation latency assertion; slow CI disks can exceed one second.
+        await asyncio.wait_for(entered.wait(), 30)
         scheduler.control(first, "cancel")
         await asyncio.wait_for(stopped.wait(), 1)
-        # Measure handoff, not the cost of grading and durably saving all 20
-        # successor answers on a shared CI disk. The successor stays blocked
-        # until we have proved it started without waiting for the 60s request.
+        # Keep cancellation at 1s and handoff at 3s, independently of startup.
+        # The successor stays blocked until we prove the 60s request was cut short.
         await asyncio.wait_for(next_entered.wait(), 3)
         assert not store.run(first)["results"]
         assert store.run(first)["status"] == "cancelled"
@@ -200,6 +221,7 @@ async def test_cancel_inflight_releases_next_run_immediately(store, frozen, monk
         release_next.set()
         await asyncio.wait_for(scheduler.queue.join(), 30)
         assert store.run(second)["status"] == "completed"
+        assert len(store.run(second)["results"]) == 1
     finally:
         await scheduler.close()
 
