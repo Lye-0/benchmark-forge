@@ -64,12 +64,15 @@ print(json.dumps({'text': 'fixture response', 'output_tokens': 2, 'metrics': {'l
 async def test_worker_termination_and_sanitized_failures(worker_command, mode):
     body = {
         "oversize": "print('x' * 1_100_000)",
-        "error": "raise RuntimeError('secret-fixture')",
+        "error": "import time; time.sleep(0.2)\nraise RuntimeError('secret-fixture')",
         "invalid": "print('secret-fixture')",
     }.get(mode, "import time; time.sleep(60)")
     processes = worker_command("import sys; sys.stdin.read()\n" + body)
+    # Only timeout mode exercises the short deadline. Other cases must let the
+    # worker start and report its intended failure on slower Windows runners.
+    timeout_seconds = 0.15 if mode == "timeout" else 5
     pending = asyncio.create_task(
-        TransformersAdapter(config(timeout_seconds=0.15)).complete(
+        TransformersAdapter(config(timeout_seconds=timeout_seconds)).complete(
             PublicProblem(problem_id="p", prompt="public")
         )
     )

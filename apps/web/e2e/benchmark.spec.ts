@@ -28,7 +28,8 @@ test.afterEach(async ({ request }, testInfo) => {
 });
 
 test('browser configuration → frozen set → run → logs → comparison', async ({ page, request }) => {
-  test.setTimeout(150000); // Up to 200 durable problem writes, then a separate UI deadline.
+  // Separate budgets: 30s initialization, 30s freeze, 120s execution, then 30s UI work.
+  test.setTimeout(210000);
   // Cold /settings includes Windows hardware discovery (two probes can each
   // take 8s). Give initialization its own deadline, then retain the normal 5s
   // rendering assertion. Exercise this on Linux too instead of hiding it with
@@ -49,8 +50,24 @@ test('browser configuration → frozen set → run → logs → comparison', asy
   await page.getByLabel('問題数', { exact: true }).fill('100');
   await expect(page.getByText('変更したカスタム')).toBeVisible();
   await page.getByRole('checkbox', { name: /Mock \/ 誤答テスト/ }).check();
+  // Exercise a slow freeze request on every platform, including fast local PCs.
+  await page.route('**/api/sets', async route => {
+    await new Promise(resolve => setTimeout(resolve, 6000));
+    await route.continue();
+  });
+  // Creating and persisting 100 problems may exceed the UI's five-second budget.
+  const frozenReady = page.waitForResponse(
+    r => r.url().endsWith('/api/sets') && r.request().method() === 'POST',
+    { timeout: 30000 },
+  );
   await page.getByRole('button', { name: '問題セットを確定する' }).click();
+  const frozenResponse = await frozenReady;
+  expect(frozenResponse.status()).toBe(200);
+  const frozen = await frozenResponse.json();
+  expect(frozen).toMatchObject({ count: 100, fixed_count: 50, dynamic_count: 50 });
+  // The successful response must still reach the UI within the normal five seconds.
   await expect(page.getByRole('heading', { name: '確定した問題セット' })).toBeVisible();
+  await expect(page.getByText(frozen.set_hash, { exact: true })).toBeVisible();
   await expect(page.getByText('100問 · 固定50 / 動的50', { exact: false })).toBeVisible();
   // A background refresh must not hold the user on the start form. Keep
   // registry refresh pending until both newly created models are visible.
